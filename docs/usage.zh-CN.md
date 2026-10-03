@@ -889,6 +889,16 @@ cc-connect daemon logs [-f]
 cc-connect daemon uninstall
 ```
 
+Windows 上可以让后台守护程序等待 Codex 桌面应用打开后再启动 cc-connect：
+
+```powershell
+cc-connect daemon install --with-codex --force --config "$env:USERPROFILE\.cc-connect\config.toml"
+```
+
+安装后无需保留 CMD 或 PowerShell 窗口。cc-connect 启动后，即使退出 Codex 也会继续在后台运行；异常退出会在 10 秒后重试，并在每次启动时重新查找当前 Codex CLI 路径。此选项检测 Codex 桌面应用，单独运行 Codex CLI 不会触发启动。
+
+`daemon stop` 停止守护程序和它管理的进程树，`daemon restart` 恢复后台运行。`daemon status` 显示状态和进程 ID；`daemon logs -n 100` 查看最近日志，`daemon logs -f` 实时查看。关闭日志窗口或按 Ctrl+C 只会停止查看日志。启动错误也写入同一个日志文件。不带 `--with-codex` 重新安装即可恢复登录 Windows 时直接启动的行为。
+
 ---
 
 ## 多工作区模式

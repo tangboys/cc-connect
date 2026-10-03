@@ -804,6 +804,32 @@ The task runs at user logon and is also started immediately after installation. 
 installer writes a small PowerShell launcher under `~/.cc-connect` so the scheduled
 task uses the selected config directory, log file, PATH, and proxy environment.
 
+To start cc-connect together with the **Codex desktop app** on Windows:
+
+```powershell
+cc-connect daemon install --with-codex --force --config "$env:USERPROFILE\.cc-connect\config.toml"
+```
+
+The hidden supervisor starts at logon and waits until Codex opens in your Windows
+session. Once started, cc-connect keeps running when Codex or the terminal closes.
+It discovers the current desktop CLI path again on each restart, so a Codex update
+does not leave the launcher pointing at an old version directory. This option
+requires the Codex desktop app; a standalone `codex.exe` CLI does not trigger it.
+
+The supervisor restarts a failed cc-connect process after 10 seconds. Use
+`cc-connect daemon stop` to stop the supervisor and its managed process tree, or
+`cc-connect daemon restart` to recover it. `/restart` also delegates to the
+supervisor. Startup errors are appended to the same log as cc-connect:
+
+```powershell
+cc-connect daemon status
+cc-connect daemon logs -n 100
+cc-connect daemon logs -f
+```
+
+Closing the log terminal or pressing Ctrl+C only ends the log viewer. To restore
+the usual logon startup without waiting for Codex, reinstall without `--with-codex`.
+
 ### Uninstall
 
 ```bash

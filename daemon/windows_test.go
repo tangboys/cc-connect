@@ -40,7 +40,10 @@ func TestBuildWindowsTaskScript(t *testing.T) {
 		`$env:http_proxy = 'http://127.0.0.1:7890'`,
 		`Set-Location -LiteralPath 'C:\Users\me\.cc-connect'`,
 		`while ($true) {`,
-		`& 'C:\Program Files\cc-connect\cc-connect.exe'`,
+		`$binary = 'C:\Program Files\cc-connect\cc-connect.exe'`,
+		`Start-Process -FilePath $binary`,
+		`-WindowStyle Hidden -PassThru`,
+		`Write-SupervisorLog $_.Exception.Message`,
 		`if ($exitCode -eq 0) { exit 0 }`,
 		`Start-Sleep -Seconds 10`,
 	} {
@@ -150,12 +153,9 @@ func TestBuildWindowsTaskScript_DropsEmptyValue(t *testing.T) {
 	}
 }
 
-// TestSchtasksInstall_TightensExistingScriptFrom0644 covers the upgrade
-// path: os.WriteFile would truncate-in-place and keep the old POSIX
-// mode of a script left by an earlier cc-connect version. While
-// Windows real access is governed by ACLs, the POSIX bits are still
-// expected to reflect intent.
-func TestSchtasksInstall_TightensExistingScriptFrom0644(t *testing.T) {
+// Windows reports writable files as 0666 regardless of the requested Unix mode.
+// Check the reinstall's actual result rather than asserting unsupported POSIX bits.
+func TestSchtasksInstall_ReplacesExistingLauncher(t *testing.T) {
 	t.Setenv("USERPROFILE", t.TempDir())
 
 	orig := runPowerShell
@@ -168,9 +168,6 @@ func TestSchtasksInstall_TightensExistingScriptFrom0644(t *testing.T) {
 	scriptPath := windowsTaskScriptPath()
 	if err := os.WriteFile(scriptPath, []byte("$env:OLD = 'leftover'\r\n"), 0o644); err != nil {
 		t.Fatalf("seed legacy script: %v", err)
-	}
-	if info, _ := os.Stat(scriptPath); info.Mode().Perm() != 0o644 {
-		t.Fatalf("precondition: seeded file mode = %o, want 0644", info.Mode().Perm())
 	}
 
 	mgr := &schtasksManager{}
@@ -185,11 +182,41 @@ func TestSchtasksInstall_TightensExistingScriptFrom0644(t *testing.T) {
 	if err := mgr.Install(cfg); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
-	info, err := os.Stat(scriptPath)
+	data, err := os.ReadFile(scriptPath)
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("script mode after reinstall = %o, want 0600", info.Mode().Perm())
+	if string(data) != buildWindowsTaskScript(cfg) {
+		t.Errorf("reinstall did not replace the old launcher")
+	}
+}
+
+func TestWindowsTaskCreate_KeepsSupervisorRunning(t *testing.T) {
+	orig := runPowerShell
+	t.Cleanup(func() { runPowerShell = orig })
+	var script string
+	runPowerShell = func(s string) (string, error) { script = s; return "", nil }
+	if err := createWindowsTask(`C:\cc-connect-daemon.ps1`); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"-ExecutionTimeLimit ([TimeSpan]::Zero)", "-MultipleInstances IgnoreNew", "-AllowStartIfOnBatteries", "-DontStopIfGoingOnBatteries", "-RestartCount 3", "-Settings $settings"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("task settings missing %q", want)
+		}
+	}
+}
+
+func TestStopWindowsTask_KillsManagedChildTree(t *testing.T) {
+	orig := runPowerShell
+	t.Cleanup(func() { runPowerShell = orig })
+	var script string
+	runPowerShell = func(s string) (string, error) { script = s; return "", nil }
+	if err := stopWindowsTask(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Stop-ScheduledTask", "taskkill.exe", "/T /F", "$child.StartTime", "$child.Path"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("stop script missing %q", want)
+		}
 	}
 }
