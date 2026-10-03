@@ -36,7 +36,7 @@ type Config struct {
 	// keychain / `secret-tool` / EnvironmentFile= set this to keep token
 	// values out of the service manager files on disk.
 	NoCaptureSecrets bool
-	StartWithCodex   bool // Windows: wait for the Codex desktop app before starting
+	StartWithCodex   bool // Windows: plugin starts the daemon; closing Codex stops it
 }
 
 type Status struct {

@@ -483,7 +483,7 @@ Commands:
   logs        View log output
 
 Install flags:
-  --with-codex          Windows: start cc-connect when Codex desktop is running
+  --with-codex          Windows: plugin startup; stop when Codex desktop closes
   --config PATH         Path to config.toml (uses its parent as work dir)
   --log-file PATH       Log file path (default: ~/.cc-connect/logs/cc-connect.log)
   --log-max-size N      Max log file size in MB (default: 10)

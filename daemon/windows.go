@@ -67,7 +67,7 @@ func (m *schtasksManager) Install(cfg Config) error {
 	}
 
 	if err := deleteWindowsTask(); err != nil {
-		if windowsTaskMatchesAction(scriptPath) {
+		if !cfg.StartWithCodex && windowsTaskMatchesAction(scriptPath) {
 			if err := m.Start(); err != nil {
 				return fmt.Errorf("start existing task: %w", err)
 			}
@@ -76,7 +76,7 @@ func (m *schtasksManager) Install(cfg Config) error {
 		return err
 	}
 
-	if err := createWindowsTask(scriptPath); err != nil {
+	if err := createWindowsTask(scriptPath, cfg.StartWithCodex); err != nil {
 		return err
 	}
 
@@ -173,15 +173,20 @@ func windowsTaskActionArgs(scriptPath string) string {
 	return fmt.Sprintf(`-WindowStyle Hidden -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%s"`, scriptPath)
 }
 
-func createWindowsTask(scriptPath string) error {
+func createWindowsTask(scriptPath string, startWithCodex bool) error {
+	trigger, triggerArg := "", ""
+	if !startWithCodex {
+		trigger = "$trigger = New-ScheduledTaskTrigger -AtLogOn -User $user"
+		triggerArg = "-Trigger $trigger"
+	}
 	out, err := runPowerShell(fmt.Sprintf(`
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument %s
 $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
+%s
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-Register-ScheduledTask -TaskName %s -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
-`, powerShellLiteral(windowsTaskActionArgs(scriptPath)), powerShellLiteral(windowsTaskName)))
+Register-ScheduledTask -TaskName %s -Action $action %s -Principal $principal -Settings $settings -Force | Out-Null
+`, powerShellLiteral(windowsTaskActionArgs(scriptPath)), trigger, powerShellLiteral(windowsTaskName), triggerArg))
 	if err != nil {
 		return fmt.Errorf("register scheduled task: %s (%w)", out, err)
 	}
@@ -244,19 +249,18 @@ try {
 	fmt.Fprintf(&sb, "Set-Location -LiteralPath %s\r\n", powerShellLiteral(cfg.WorkDir))
 	if cfg.StartWithCodex {
 		sb.WriteString(`
-Write-SupervisorLog 'waiting for Codex desktop'
 $sessionId = (Get-Process -Id $PID).SessionId
-do {
-    $desktop = Get-Process -Name ChatGPT,Codex -ErrorAction SilentlyContinue | Where-Object {
+function Find-CodexDesktop {
+    Get-Process -Name ChatGPT,Codex -ErrorAction SilentlyContinue | Where-Object {
         $_.SessionId -eq $sessionId -and $_.MainWindowHandle -ne 0 -and [Diagnostics.FileVersionInfo]::GetVersionInfo($_.Path).ProductName -eq 'Codex'
     } | Select-Object -First 1
-    if ($null -eq $desktop) { Start-Sleep -Seconds 2 }
-} until ($null -ne $desktop)
+}
 `)
 	}
 	sb.WriteString("$basePath = $env:PATH\r\nwhile ($true) {\r\n")
 	if cfg.StartWithCodex {
 		sb.WriteString(`
+    if ($null -eq (Find-CodexDesktop)) { Write-SupervisorLog 'Codex desktop closed; stopping'; exit 0 }
     $codexExe = Get-ChildItem -Path "$env:LOCALAPPDATA\OpenAI\Codex\bin\*\codex.exe" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($codexExe) { $env:PATH = $codexExe.DirectoryName + ';' + $basePath }
 `)
@@ -264,7 +268,17 @@ do {
 	sb.WriteString(`
     $process = Start-Process -FilePath $binary -WorkingDirectory (Get-Location).Path -WindowStyle Hidden -PassThru
     @{ pid = $process.Id; binary_path = $binary; start_ticks = $process.StartTime.ToUniversalTime().Ticks } | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding UTF8
-    $process.WaitForExit()
+`)
+	if cfg.StartWithCodex {
+		sb.WriteString(`
+    while (-not $process.WaitForExit(1000)) {
+        if ($null -eq (Find-CodexDesktop)) { Write-SupervisorLog 'Codex desktop closed; stopping'; exit 0 }
+    }
+`)
+	} else {
+		sb.WriteString("    $process.WaitForExit()\r\n")
+	}
+	sb.WriteString(`
     $exitCode = $process.ExitCode
     Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
     $process.Dispose()

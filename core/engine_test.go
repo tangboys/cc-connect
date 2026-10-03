@@ -3781,7 +3781,7 @@ func TestCmdHelp_UsesLegacyTextOnPlatformWithoutCardSupport(t *testing.T) {
 	if strings.Contains(p.sent[0], "cc-connect 帮助") {
 		t.Fatalf("help text = %q, should not be card title fallback", p.sent[0])
 	}
-	if !strings.Contains(p.sent[0], "/cron [add|list|exec|del|enable|disable]") {
+	if !strings.Contains(p.sent[0], "/定时 [add|list|exec|del|enable|disable]") {
 		t.Fatalf("help text = %q, want explicit cron exec usage", p.sent[0])
 	}
 }

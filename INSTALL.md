@@ -808,13 +808,23 @@ To start cc-connect together with the **Codex desktop app** on Windows:
 
 ```powershell
 cc-connect daemon install --with-codex --force --config "$env:USERPROFILE\.cc-connect\config.toml"
+codex plugin marketplace add .
+codex plugin add cc-connect@cc-connect-local
 ```
 
-The hidden supervisor starts at logon and waits until Codex opens in your Windows
-session. Once started, cc-connect keeps running when Codex or the terminal closes.
-It discovers the current desktop CLI path again on each restart, so a Codex update
-does not leave the launcher pointing at an old version directory. This option
+Run the plugin commands from this repository, with the newly built cc-connect on
+PATH (or set its absolute path in `codex-plugin/.mcp.json` before installing the
+plugin). Reload Codex after installation. The plugin starts the hidden supervisor
+when its MCP connection initializes. This mode has no Windows logon trigger.
+Closing Codex stops cc-connect and its managed agent processes; closing a terminal
+or an individual chat does not. A Codex window without a loaded plugin session
+does not initialize MCP, so the first plugin session triggers startup.
+
+The supervisor discovers the current desktop CLI path on each restart, so a Codex
+update does not leave it pointing at an old version directory. This option
 requires the Codex desktop app; a standalone `codex.exe` CLI does not trigger it.
+The plugin manages connection lifecycle only. Feishu and desktop tasks still use
+separate execution sessions; this does not bypass Codex's exclusive thread writer.
 
 The supervisor restarts a failed cc-connect process after 10 seconds. Use
 `cc-connect daemon stop` to stop the supervisor and its managed process tree, or
@@ -828,7 +838,8 @@ cc-connect daemon logs -f
 ```
 
 Closing the log terminal or pressing Ctrl+C only ends the log viewer. To restore
-the usual logon startup without waiting for Codex, reinstall without `--with-codex`.
+the usual independent logon startup, disable/remove the plugin and reinstall
+without `--with-codex`.
 
 ### Uninstall
 

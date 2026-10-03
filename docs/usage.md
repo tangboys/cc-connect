@@ -5,6 +5,7 @@ Complete guide to using cc-connect features.
 ## Table of Contents
 
 - [Session Management](#session-management)
+- [Localized Commands](#localized-commands)
 - [Permission Modes](#permission-modes)
 - [API Provider Management](#api-provider-management)
 - [Model Selection](#model-selection)
@@ -26,6 +27,16 @@ Complete guide to using cc-connect features.
 - [Configuration Reference](#configuration-reference)
 
 ---
+
+## Localized Commands
+
+Built-in command names accept English, Simplified Chinese, Traditional Chinese,
+Japanese, and Spanish aliases. English commands remain valid. `/lang zh` (or
+`/语言 中文`) selects the reply/help language; `language = "zh"` in `config.toml`
+sets the default. Examples: `/帮助` = `/help`, `/模型` = `/model`, `/推理 ultra` =
+`/reasoning ultra`, and `/暂停` = `/stop`. Use help in your language for the full list.
+Arguments such as model IDs, reasoning levels, and subcommands retain their existing
+values. All aliases use the same permission checks as their English commands.
 
 ## Session Management
 

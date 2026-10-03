@@ -79,7 +79,7 @@ func TestWindowsTaskCreateUsesLimitedInteractivePrincipal(t *testing.T) {
 		return "", nil
 	}
 
-	if err := createWindowsTask(`C:\Users\me\.cc-connect\cc-connect-daemon.ps1`); err != nil {
+	if err := createWindowsTask(`C:\Users\me\.cc-connect\cc-connect-daemon.ps1`, false); err != nil {
 		t.Fatalf("createWindowsTask() error = %v", err)
 	}
 	for _, want := range []string{
@@ -196,12 +196,30 @@ func TestWindowsTaskCreate_KeepsSupervisorRunning(t *testing.T) {
 	t.Cleanup(func() { runPowerShell = orig })
 	var script string
 	runPowerShell = func(s string) (string, error) { script = s; return "", nil }
-	if err := createWindowsTask(`C:\cc-connect-daemon.ps1`); err != nil {
+	if err := createWindowsTask(`C:\cc-connect-daemon.ps1`, false); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"-ExecutionTimeLimit ([TimeSpan]::Zero)", "-MultipleInstances IgnoreNew", "-AllowStartIfOnBatteries", "-DontStopIfGoingOnBatteries", "-RestartCount 3", "-Settings $settings"} {
 		if !strings.Contains(script, want) {
 			t.Errorf("task settings missing %q", want)
+		}
+	}
+}
+
+func TestWindowsTaskCreate_CodexPluginHasNoLoginTrigger(t *testing.T) {
+	orig := runPowerShell
+	t.Cleanup(func() { runPowerShell = orig })
+	var script string
+	runPowerShell = func(s string) (string, error) { script = s; return "", nil }
+	for _, withCodex := range []bool{false, true} {
+		if err := createWindowsTask(`C:\cc-connect-daemon.ps1`, withCodex); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(script, "-AtLogOn"); got == withCodex {
+			t.Errorf("withCodex=%v: login trigger present=%v", withCodex, got)
+		}
+		if got := strings.Contains(script, "-Trigger $trigger"); got == withCodex {
+			t.Errorf("withCodex=%v: registered login trigger=%v", withCodex, got)
 		}
 	}
 }

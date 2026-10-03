@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -247,6 +248,8 @@ const (
 	MsgHelpToolsSection          MsgKey = "help_tools_section"
 	MsgHelpSystemSection         MsgKey = "help_system_section"
 	MsgHelpTip                   MsgKey = "help_tip"
+	MsgPluginDaemonRequired      MsgKey = "plugin_daemon_required"
+	MsgDaemonStatus              MsgKey = "daemon_status"
 	MsgListTitle                 MsgKey = "list_title"
 	MsgListTitlePaged            MsgKey = "list_title_paged"
 	MsgListEmpty                 MsgKey = "list_empty"
@@ -1453,6 +1456,20 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "提示：命令支持前綴匹配，如 /pro l = /provider list",
 		LangJapanese:           "ヒント：コマンドはプレフィックスマッチに対応、例: /pro l = /provider list",
 		LangSpanish:            "Consejo: Los comandos admiten coincidencia por prefijo, ej. /pro l = /provider list",
+	},
+	MsgPluginDaemonRequired: {
+		LangEnglish:            "Install the plugin daemon first: cc-connect daemon install --with-codex --force",
+		LangChinese:            "请先安装插件后台启动器：cc-connect daemon install --with-codex --force",
+		LangTraditionalChinese: "請先安裝外掛背景啟動器：cc-connect daemon install --with-codex --force",
+		LangJapanese:           "プラグインのバックグラウンド起動を先に設定してください: cc-connect daemon install --with-codex --force",
+		LangSpanish:            "Instala primero el daemon del plugin: cc-connect daemon install --with-codex --force",
+	},
+	MsgDaemonStatus: {
+		LangEnglish:            "Check the cc-connect background connection status",
+		LangChinese:            "查看 cc-connect 后台连接状态",
+		LangTraditionalChinese: "查看 cc-connect 背景連線狀態",
+		LangJapanese:           "cc-connect のバックグラウンド接続状態を確認",
+		LangSpanish:            "Consultar el estado de la conexión de cc-connect",
 	},
 	MsgListTitle: {
 		LangEnglish:            "**%s Sessions** (%d)\n\n",
@@ -4509,22 +4526,114 @@ Environment variables CC_PROJECT and CC_SESSION_KEY are already set, so the rela
 	},
 }
 
+// Command names are independent of the selected reply language: users can
+// mix localized and English commands without changing the command's identity.
+var localizedCommandNames = map[string]map[Language]string{
+	"new":       {LangChinese: "新建", LangTraditionalChinese: "新建", LangJapanese: "新規", LangSpanish: "nuevo"},
+	"list":      {LangChinese: "列表", LangTraditionalChinese: "清單", LangJapanese: "一覧", LangSpanish: "lista"},
+	"switch":    {LangChinese: "切换", LangTraditionalChinese: "切換", LangJapanese: "切替", LangSpanish: "cambiar"},
+	"name":      {LangChinese: "命名", LangTraditionalChinese: "命名", LangJapanese: "名前", LangSpanish: "nombre"},
+	"current":   {LangChinese: "当前", LangTraditionalChinese: "目前", LangJapanese: "現在", LangSpanish: "actual"},
+	"status":    {LangChinese: "状态", LangTraditionalChinese: "狀態", LangJapanese: "状態", LangSpanish: "estado"},
+	"usage":     {LangChinese: "用量", LangTraditionalChinese: "用量", LangJapanese: "使用量", LangSpanish: "uso"},
+	"history":   {LangChinese: "历史", LangTraditionalChinese: "歷史", LangJapanese: "履歴", LangSpanish: "historial"},
+	"allow":     {LangChinese: "授权", LangTraditionalChinese: "授權", LangJapanese: "許可", LangSpanish: "permitir"},
+	"model":     {LangChinese: "模型", LangTraditionalChinese: "模型", LangJapanese: "モデル", LangSpanish: "modelo"},
+	"reasoning": {LangChinese: "推理", LangTraditionalChinese: "推理", LangJapanese: "推論", LangSpanish: "razonamiento"},
+	"mode":      {LangChinese: "模式", LangTraditionalChinese: "模式", LangJapanese: "モード", LangSpanish: "modo"},
+	"lang":      {LangChinese: "语言", LangTraditionalChinese: "語言", LangJapanese: "言語", LangSpanish: "idioma"},
+	"quiet":     {LangChinese: "静默", LangTraditionalChinese: "靜默", LangJapanese: "静音", LangSpanish: "silencio"},
+	"provider":  {LangChinese: "服务商", LangTraditionalChinese: "服務商", LangJapanese: "プロバイダー", LangSpanish: "proveedor"},
+	"memory":    {LangChinese: "记忆", LangTraditionalChinese: "記憶", LangJapanese: "記憶", LangSpanish: "memoria"},
+	"cron":      {LangChinese: "定时", LangTraditionalChinese: "排程", LangJapanese: "定期", LangSpanish: "programar"},
+	"timer":     {LangChinese: "提醒", LangTraditionalChinese: "提醒", LangJapanese: "リマインダー", LangSpanish: "recordatorio"},
+	"heartbeat": {LangChinese: "心跳", LangTraditionalChinese: "心跳", LangJapanese: "ハートビート", LangSpanish: "latido"},
+	"compress":  {LangChinese: "压缩", LangTraditionalChinese: "壓縮", LangJapanese: "圧縮", LangSpanish: "comprimir"},
+	"stop":      {LangChinese: "停止", LangTraditionalChinese: "停止", LangJapanese: "停止", LangSpanish: "detener"},
+	"cancel":    {LangChinese: "取消", LangTraditionalChinese: "取消", LangJapanese: "キャンセル", LangSpanish: "cancelar"},
+	"help":      {LangChinese: "帮助", LangTraditionalChinese: "幫助", LangJapanese: "ヘルプ", LangSpanish: "ayuda"},
+	"version":   {LangChinese: "版本", LangTraditionalChinese: "版本", LangJapanese: "バージョン", LangSpanish: "versión"},
+	"commands":  {LangChinese: "命令", LangTraditionalChinese: "命令", LangJapanese: "コマンド", LangSpanish: "comandos"},
+	"skills":    {LangChinese: "技能", LangTraditionalChinese: "技能", LangJapanese: "スキル", LangSpanish: "habilidades"},
+	"config":    {LangChinese: "配置", LangTraditionalChinese: "設定", LangJapanese: "設定", LangSpanish: "configuración"},
+	"doctor":    {LangChinese: "诊断", LangTraditionalChinese: "診斷", LangJapanese: "診断", LangSpanish: "diagnóstico"},
+	"upgrade":   {LangChinese: "升级", LangTraditionalChinese: "升級", LangJapanese: "更新", LangSpanish: "actualizar"},
+	"restart":   {LangChinese: "重启", LangTraditionalChinese: "重啟", LangJapanese: "再起動", LangSpanish: "reiniciar"},
+	"alias":     {LangChinese: "别名", LangTraditionalChinese: "別名", LangJapanese: "別名", LangSpanish: "alias"},
+	"delete":    {LangChinese: "删除", LangTraditionalChinese: "刪除", LangJapanese: "削除", LangSpanish: "eliminar"},
+	"bind":      {LangChinese: "绑定", LangTraditionalChinese: "綁定", LangJapanese: "接続", LangSpanish: "vincular"},
+	"search":    {LangChinese: "搜索", LangTraditionalChinese: "搜尋", LangJapanese: "検索", LangSpanish: "buscar"},
+	"shell":     {LangChinese: "终端", LangTraditionalChinese: "終端", LangJapanese: "シェル", LangSpanish: "terminal"},
+	"show":      {LangChinese: "查看", LangTraditionalChinese: "檢視", LangJapanese: "表示", LangSpanish: "mostrar"},
+	"dir":       {LangChinese: "目录", LangTraditionalChinese: "目錄", LangJapanese: "ディレクトリ", LangSpanish: "directorio"},
+	"tts":       {LangChinese: "语音", LangTraditionalChinese: "語音", LangJapanese: "音声", LangSpanish: "voz"},
+	"workspace": {LangChinese: "工作区", LangTraditionalChinese: "工作區", LangJapanese: "ワークスペース", LangSpanish: "espacio"},
+	"whoami":    {LangChinese: "我的身份", LangTraditionalChinese: "我的身分", LangJapanese: "自分", LangSpanish: "identidad"},
+	"web":       {LangChinese: "网页", LangTraditionalChinese: "網頁", LangJapanese: "ウェブ", LangSpanish: "web"},
+	"diff":      {LangChinese: "差异", LangTraditionalChinese: "差異", LangJapanese: "差分", LangSpanish: "diferencias"},
+	"ps":        {LangChinese: "补充", LangTraditionalChinese: "補充", LangJapanese: "補足", LangSpanish: "añadir"},
+}
+
+func (i *I18n) CommandName(command string) string {
+	if name := localizedCommandNames[command][i.CurrentLang()]; name != "" {
+		return name
+	}
+	return command
+}
+
+func normalizeLocalizedCommand(content string) string {
+	if !strings.HasPrefix(content, "/") {
+		return content
+	}
+	end := strings.IndexAny(content, " \t\r\n")
+	if end < 0 {
+		end = len(content)
+	}
+	name := strings.ToLower(content[1:end])
+	if name == "暂停" || name == "暫停" {
+		return "/stop" + content[end:]
+	}
+	for command, translations := range localizedCommandNames {
+		for _, translation := range translations {
+			if name == translation {
+				return "/" + command + content[end:]
+			}
+		}
+	}
+	return content
+}
+
+var helpCommandPattern = regexp.MustCompile("(?m)(^|[\\s`])/[a-z]+")
+
+func localizeHelp(key MsgKey, text string, lang Language) string {
+	if key != MsgHelp && key != MsgHelpTip {
+		return text
+	}
+	return helpCommandPattern.ReplaceAllStringFunc(text, func(match string) string {
+		start := strings.LastIndex(match, "/")
+		if name := localizedCommandNames[match[start+1:]][lang]; name != "" {
+			return match[:start+1] + name
+		}
+		return match
+	})
+}
+
 func (i *I18n) T(key MsgKey) string {
 	i.mu.RLock()
 	lang := i.currentLang()
 	i.mu.RUnlock()
 	if msg, ok := messages[key]; ok {
 		if translated, ok := msg[lang]; ok {
-			return translated
+			return localizeHelp(key, translated, lang)
 		}
 		// Fallback: zh-TW → zh → en
 		if lang == LangTraditionalChinese {
 			if translated, ok := msg[LangChinese]; ok {
-				return translated
+				return localizeHelp(key, translated, lang)
 			}
 		}
 		if msg[LangEnglish] != "" {
-			return msg[LangEnglish]
+			return localizeHelp(key, msg[LangEnglish], lang)
 		}
 	}
 	return string(key)

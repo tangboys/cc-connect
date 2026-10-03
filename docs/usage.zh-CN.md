@@ -5,6 +5,7 @@ cc-connect 完整功能使用指南。
 ## 目录
 
 - [会话管理](#会话管理)
+- [多语言命令](#多语言命令)
 - [权限模式](#权限模式)
 - [API Provider 管理](#api-provider-管理)
 - [模型选择](#模型选择)
@@ -27,6 +28,23 @@ cc-connect 完整功能使用指南。
 - [配置参考](#配置参考)
 
 ---
+
+## 多语言命令
+
+内置命令支持英文、简体中文、繁体中文、日文、西班牙文入口。英文命令继续有效；
+`/语言 中文`（等价于 `/lang zh`）切换回复和帮助页语言，`config.toml` 中也可设置 `language = "zh"`。
+命令参数仍沿用原来的值，例如模型 ID、推理等级和 `list`、`add` 等子命令。
+
+| 中文命令 | 英文命令 |
+|----------|----------|
+| `/帮助` | `/help` |
+| `/新建`、`/列表`、`/切换` | `/new`、`/list`、`/switch` |
+| `/模型`、`/推理 ultra` | `/model`、`/reasoning ultra` |
+| `/停止`、`/暂停` | `/stop` |
+| `/状态`、`/用量`、`/历史` | `/status`、`/usage`、`/history` |
+| `/语言`、`/配置`、`/重启` | `/lang`、`/config`、`/restart` |
+
+其他命令见当前语言的 `/帮助`。中文入口使用相同的权限校验，不会绕过管理员限制。
 
 ## 会话管理
 
@@ -889,15 +907,20 @@ cc-connect daemon logs [-f]
 cc-connect daemon uninstall
 ```
 
-Windows 上可以让后台守护程序等待 Codex 桌面应用打开后再启动 cc-connect：
+Windows 上可通过 Codex 插件启动后台连接。在本仓库目录执行，确保 PATH 中的
+`cc-connect` 是新版本，或先在 `codex-plugin/.mcp.json` 中填写新版本程序的绝对路径：
 
 ```powershell
 cc-connect daemon install --with-codex --force --config "$env:USERPROFILE\.cc-connect\config.toml"
+codex plugin marketplace add .
+codex plugin add cc-connect@cc-connect-local
 ```
 
-安装后无需保留 CMD 或 PowerShell 窗口。cc-connect 启动后，即使退出 Codex 也会继续在后台运行；异常退出会在 10 秒后重试，并在每次启动时重新查找当前 Codex CLI 路径。此选项检测 Codex 桌面应用，单独运行 Codex CLI 不会触发启动。
+安装后重新打开 Codex。插件的 MCP 连接建立时启动 cc-connect，关闭 Codex 窗口后停止机器人连接及其 Agent 进程。无需保留 CMD 或 PowerShell 窗口，也不再由 Windows 登录触发。空白应用窗口尚未加载插件会话时，MCP 不会初始化，需要打开一个会话才能触发启动。
 
-`daemon stop` 停止守护程序和它管理的进程树，`daemon restart` 恢复后台运行。`daemon status` 显示状态和进程 ID；`daemon logs -n 100` 查看最近日志，`daemon logs -f` 实时查看。关闭日志窗口或按 Ctrl+C 只会停止查看日志。启动错误也写入同一个日志文件。不带 `--with-codex` 重新安装即可恢复登录 Windows 时直接启动的行为。
+关闭单个聊天不会影响其他聊天使用的连接。异常退出会在 10 秒后重试，每次启动重新查找当前 Codex CLI 路径。单独运行 Codex CLI 不会触发此模式。此插件只管理连接起停，飞书和桌面仍是独立执行会话，尚未实现共享任务的输入、暂停同步。
+
+`daemon stop` 停止后台连接和它管理的进程树，`daemon restart` 在 Codex 打开时恢复后台运行。`daemon status` 显示状态和进程 ID；`daemon logs -n 100` 查看最近日志，`daemon logs -f` 实时查看。关闭日志窗口或按 Ctrl+C 只会停止查看日志。启动错误也写入同一个日志文件。禁用或移除插件后，不带 `--with-codex` 重新安装即可恢复登录 Windows 时直接启动的行为。
 
 ---
 

@@ -3,6 +3,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -35,22 +36,22 @@ func TestMain(m *testing.M) {
 
 func TestBuildWindowsTaskScript_CodexGateIsOptional(t *testing.T) {
 	cfg := Config{BinaryPath: "cc.exe", WorkDir: "work", LogFile: "log"}
-	if strings.Contains(buildWindowsTaskScript(cfg), "waiting for Codex desktop") {
+	if strings.Contains(buildWindowsTaskScript(cfg), "Find-CodexDesktop") {
 		t.Fatal("default daemon must start independently of Codex")
 	}
 	cfg.StartWithCodex = true
 	script := buildWindowsTaskScript(cfg)
-	for _, want := range []string{"waiting for Codex desktop", "MainWindowHandle -ne 0", "ProductName -eq 'Codex'", "SessionId -eq $sessionId", `OpenAI\Codex\bin\*\codex.exe`} {
+	for _, want := range []string{"Find-CodexDesktop", "MainWindowHandle -ne 0", "ProductName -eq 'Codex'", "SessionId -eq $sessionId", `OpenAI\Codex\bin\*\codex.exe`, "$process.WaitForExit(1000)"} {
 		if !strings.Contains(script, want) {
 			t.Errorf("Codex gate missing %q", want)
 		}
 	}
-	if strings.Index(script, "until ($null -ne $desktop)") > strings.Index(script, "while ($true)") {
-		t.Fatal("gate must only apply to initial startup so recovery works after Codex exits")
+	if strings.Count(script, "if ($null -eq (Find-CodexDesktop))") != 2 {
+		t.Fatal("Codex presence must be checked before startup and while the child runs")
 	}
 }
 
-func TestWindowsSupervisor_WaitsForCodex(t *testing.T) {
+func TestWindowsSupervisor_ExitsWithoutCodex(t *testing.T) {
 	t.Setenv("USERPROFILE", t.TempDir())
 	t.Setenv("CC_CONNECT_TEST_PROCESS", "child")
 	if err := os.MkdirAll(DefaultDataDir(), 0700); err != nil {
@@ -66,37 +67,76 @@ func TestWindowsSupervisor_WaitsForCodex(t *testing.T) {
 `
 	scriptPath := filepath.Join(t.TempDir(), "supervisor.ps1")
 	os.WriteFile(scriptPath, []byte(prefix+buildWindowsTaskScript(cfg)), 0600)
-	outputPath := filepath.Join(t.TempDir(), "output.log")
-	output, err := os.Create(outputPath)
-	if err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log, _ := os.ReadFile(cfg.LogFile)
+		t.Fatalf("supervisor must exit without waiting for Windows/Codex startup: %v (context: %v) %s %s", err, ctx.Err(), out, log)
+	}
+	if _, err := os.Stat(windowsProcessStatePath()); !os.IsNotExist(err) {
+		t.Fatal("started a child without Codex")
+	}
+}
+
+func TestWindowsSupervisor_CodexCloseStopsManagedTree(t *testing.T) {
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("CC_CONNECT_TEST_PROCESS", "parent")
+	childPIDFile := filepath.Join(t.TempDir(), "child.pid")
+	t.Setenv("CC_CONNECT_TEST_CHILD_PID", childPIDFile)
+	if err := os.MkdirAll(DefaultDataDir(), 0700); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { output.Close() })
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
-	cmd.Stdout, cmd.Stderr = output, output
+	exe, _ := os.Executable()
+	cfg := Config{BinaryPath: exe, WorkDir: t.TempDir(), LogFile: filepath.Join(t.TempDir(), "supervisor.log"), StartWithCodex: true}
+	presence := filepath.Join(t.TempDir(), "codex-open")
+	if err := os.WriteFile(presence, []byte("open"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Replace only desktop discovery; exercise the real launcher and process tree.
+	override := fmt.Sprintf("function Find-CodexDesktop { if (Test-Path -LiteralPath %s) { return 'open' } }\r\n", powerShellLiteral(presence))
+	script := strings.Replace(buildWindowsTaskScript(cfg), "$basePath = $env:PATH", override+"$basePath = $env:PATH", 1)
+	scriptPath := filepath.Join(t.TempDir(), "supervisor.ps1")
+	if err := os.WriteFile(scriptPath, []byte(script), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		cmd.Process.Kill()
-		cmd.Wait()
 		runPowerShell(windowsManagedChildScript() + `if ($null -ne $child) { & taskkill.exe /PID $child.Id /T /F | Out-Null }`)
 	})
-	deadline := time.Now().Add(15 * time.Second)
+	var parentPID, childPID int
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		log, _ := os.ReadFile(cfg.LogFile)
-		if strings.Contains(string(log), "waiting for Codex desktop") {
-			time.Sleep(500 * time.Millisecond)
-			if _, err := os.Stat(windowsProcessStatePath()); !os.IsNotExist(err) {
-				t.Fatal("started a child before Codex opened")
-			}
-			return
+		data, _ := os.ReadFile(childPIDFile)
+		if n, _ := fmt.Sscanf(string(data), "%d %d", &parentPID, &childPID); n == 2 {
+			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	data, _ := os.ReadFile(outputPath)
-	t.Fatalf("supervisor did not reach the Codex gate: %s", data)
+	if childPID == 0 {
+		t.Fatal("supervisor did not start the bot process tree")
+	}
+	if err := os.Remove(presence); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("closing Codex should stop cleanly: %v", err)
+	}
+	out, err := runPowerShell(fmt.Sprintf(`Get-Process -Id %d,%d -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id; exit 0`, parentPID, childPID))
+	if err != nil || out != "" {
+		t.Fatalf("bot processes survived Codex close: %q %v", out, err)
+	}
+	if _, err := os.Stat(windowsProcessStatePath()); !os.IsNotExist(err) {
+		t.Fatal("stale process state after Codex close")
+	}
 }
 
 func TestWindowsSupervisor_RestartsAndStopsManagedTree(t *testing.T) {

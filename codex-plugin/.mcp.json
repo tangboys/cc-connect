@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cc-connect": {
+      "command": "cc-connect",
+      "args": ["codex-plugin"],
+      "startup_timeout_sec": 30
+    }
+  }
+}

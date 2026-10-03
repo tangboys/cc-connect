@@ -231,6 +231,11 @@ var topLevelCommandHandlers = map[string]func([]string){
 }
 
 func main() {
+	// MCP stdio must stay free of CLI output and log redirection.
+	if len(os.Args) > 1 && os.Args[1] == "codex-plugin" {
+		runCodexPlugin()
+		return
+	}
 	// Agy hooks require stdout to contain only the final JSON decision. Handle
 	// this internal command before update checks, logging, or normal CLI setup.
 	if len(os.Args) > 1 && os.Args[1] == "_agy-permission-hook" {
@@ -1638,6 +1643,7 @@ Flags:
   --help             Show this help message
 
 Commands:
+  codex-plugin       Codex plugin MCP entry point (stdio)
   daemon             Manage cc-connect as a background service (systemd/launchd/schtasks)
     install          Install and start the daemon service
     uninstall        Remove the daemon service

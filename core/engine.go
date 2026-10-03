@@ -3034,6 +3034,7 @@ func (e *Engine) handleMessage(p Platform, msg *Message) {
 	// Resolve aliases on user text BEFORE merging ExtraContent, so reply
 	// quotes and platform context survive alias resolution (PR #420 fix).
 	content = e.resolveAlias(content)
+	content = normalizeLocalizedCommand(content)
 	if msg.ExtraContent != "" {
 		if content == "" {
 			msg.Content = msg.ExtraContent
@@ -9910,7 +9911,8 @@ func (e *Engine) renderHelpGroupCard(groupKey string) *Card {
 		return strings.Trim(sectionTitle(key), "* ")
 	}
 	commandText := func(command string) string {
-		return "**" + command + "**  " + e.i18n.T(MsgKey(strings.TrimPrefix(command, "/")))
+		name := strings.TrimPrefix(command, "/")
+		return "**/" + e.i18n.CommandName(name) + "**  " + e.i18n.T(MsgKey(name))
 	}
 
 	groups := helpCardGroups()
