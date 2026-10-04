@@ -6763,7 +6763,6 @@ func (e *Engine) notifyDroppedQueuedMessages(state *interactiveState, reason err
 // state.mu) to close the race window between "queue empty" and "session unlocked".
 // Returns true if the session was unlocked by this call.
 func (e *Engine) drainPendingMessages(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string, lockGen uint64) bool {
-	i18n := e.stateI18n(state)
 	for {
 		state.mu.Lock()
 		if len(state.pendingMessages) == 0 {
@@ -6797,7 +6796,7 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 		state.language = queued.language
 		state.mu.Unlock()
 
-		i18n = NewI18n(queued.language)
+		i18n := NewI18n(queued.language)
 		prompt := e.buildSenderPrompt(queued.content, queued.userID, queued.userName, queued.msgPlatform, queued.msgSessionKey, queued.channelKey)
 
 		state.mu.Lock()
@@ -7524,9 +7523,9 @@ func (e *Engine) cmdList(p Platform, msg *Message, args []string) {
 
 		var sb strings.Builder
 		if totalPages > 1 {
-			sb.WriteString(fmt.Sprintf(i18n.T(MsgListTitlePaged), agentName, total, page, totalPages))
+			fmt.Fprintf(&sb, i18n.T(MsgListTitlePaged), agentName, total, page, totalPages)
 		} else {
-			sb.WriteString(fmt.Sprintf(i18n.T(MsgListTitle), agentName, total))
+			fmt.Fprintf(&sb, i18n.T(MsgListTitle), agentName, total)
 		}
 		for i := start; i < end; i++ {
 			s := agentSessions[i]
@@ -7551,7 +7550,7 @@ func (e *Engine) cmdList(p Platform, msg *Message, args []string) {
 				marker, i+1, displayName, s.MessageCount, s.ModifiedAt.Format("01-02 15:04")))
 		}
 		if totalPages > 1 {
-			sb.WriteString(fmt.Sprintf(i18n.T(MsgListPageHint), page, totalPages))
+			fmt.Fprintf(&sb, i18n.T(MsgListPageHint), page, totalPages)
 		}
 		sb.WriteString(i18n.T(MsgListSwitchHint))
 		e.reply(p, msg.ReplyCtx, sb.String())
