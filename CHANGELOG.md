@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.5.3-tangboys.1 (2026-10-04)
+
+本分支首次公开预发布，汇总下方三次更新。完整发布说明见
+[changelogs/v1.5.3-tangboys.1.md](changelogs/v1.5.3-tangboys.1.md)。
+
+- 提供 Linux / macOS / Windows 的 amd64、arm64 下载包及 SHA-256 校验文件；Windows 包附带 UTF-8 包装程序，安装时无需 Go。
+- 新增标签触发的 GitHub Release 工作流；后续大版本按[发布流程](docs/releasing.md)同步更新版本说明、下载包与 Releases。
+- 保持预发布状态，记录 Windows 全量测试的既有失败与实际验收范围。
+
 ## tangboys fork updates (2026-10-04)
 
 以下记录本分支的更新；上游版本记录保留在下方。

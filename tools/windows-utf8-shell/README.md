@@ -9,8 +9,9 @@ hardcoded. Codex's sandbox and permission mode still apply.
 ## 安装
 
 适用于 Windows、已安装 PowerShell 7、已有 `cc-connect daemon` 的环境。
-需要 Go（版本要求见仓库 `go.mod`）来编译包装程序；编译后运行时不需要 Go。
-先确保 `go` 和真实的 `pwsh.exe` 都能在 `PATH` 中找到，在仓库目录执行：
+从本仓库 Releases 下载的 Windows 包包含已编译的包装程序，安装时不需要 Go。
+从源码仓库安装时需要 Go（版本要求见 `go.mod`）；编译后运行时不需要 Go。
+确保真实的 `pwsh.exe` 在 `PATH` 中，在仓库或解压后的发布包目录执行：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-utf8-shell\install.ps1

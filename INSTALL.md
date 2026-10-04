@@ -2,6 +2,14 @@
 
 > **This document is designed to be read by AI coding agents (Claude Code, Cursor, Gemini CLI, etc.) to help users install and configure cc-connect.** You can feed this file directly to your AI agent.
 
+## tangboys fork releases
+
+Download this fork from [tangboys/cc-connect Releases](https://github.com/tangboys/cc-connect/releases).
+Unpack the archive, put its `cc-connect` executable on PATH, and follow `RELEASE_NOTES.md`
+for the fork upgrade steps and Windows UTF-8 setup. The archive also contains the
+Codex plugin; run the plugin installation commands below from the unpacked directory.
+The npm and Homebrew packages described below distribute the upstream version.
+
 ## What is cc-connect?
 
 cc-connect bridges local AI coding assistants to messaging platforms (Feishu, DingTalk, Telegram, Slack, Discord, LINE, WeChat Work, QQ, **personal WeChat** via the **Weixin (ilink)** platform).

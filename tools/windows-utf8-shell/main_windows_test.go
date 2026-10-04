@@ -126,3 +126,30 @@ func TestInstaller_UTF8SurvivesSessionPATHInjection(t *testing.T) {
 		t.Errorf("backups = %v, error = %v", backups, err)
 	}
 }
+
+func TestInstaller_BundledWrapperDoesNotRequireGo(t *testing.T) {
+	dataDir, bundleDir := t.TempDir(), t.TempDir()
+	installer, err := os.ReadFile("install.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, content := range map[string][]byte{
+		filepath.Join(bundleDir, "install.ps1"):         installer,
+		filepath.Join(bundleDir, "pwsh.exe"):            []byte("bundled release wrapper"),
+		filepath.Join(dataDir, "cc-connect-daemon.ps1"): []byte("$env:PATH = 'C:\\Windows\\System32'\r\n"),
+	} {
+		if err := os.WriteFile(path, content, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	powershell := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	cmd := exec.Command(powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(bundleDir, "install.ps1"), "-DataDir", dataDir)
+	cmd.Env = append(os.Environ(), "PATH="+filepath.Join(os.Getenv("SystemRoot"), "System32"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("install without Go: %v\n%s", err, out)
+	}
+	installed, err := os.ReadFile(filepath.Join(dataDir, "utf8-shell", "pwsh.exe"))
+	if err != nil || string(installed) != "bundled release wrapper" {
+		t.Fatalf("installed wrapper = %q, error = %v", installed, err)
+	}
+}

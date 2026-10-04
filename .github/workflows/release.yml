@@ -1,0 +1,94 @@
+name: Fork release
+
+on:
+  push:
+    tags: ['v*-tangboys*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing fork version tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux/amd64, runner: ubuntu-latest }
+          - { target: linux/arm64, runner: ubuntu-latest }
+          - { target: darwin/amd64, runner: ubuntu-latest }
+          - { target: darwin/arm64, runner: ubuntu-latest }
+          - { target: windows/amd64, runner: windows-latest }
+          - { target: windows/arm64, runner: ubuntu-latest }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build web assets
+        working-directory: web
+        run: pnpm install --frozen-lockfile && pnpm build
+      - name: Windows UTF-8 regression tests
+        if: matrix.target == 'windows/amd64'
+        run: go test ./tools/windows-utf8-shell -count=1 -timeout 90s
+      - name: Package release
+        shell: pwsh
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: ./tools/package-release.ps1 -Version $env:RELEASE_TAG -Targets $env:RELEASE_TARGET
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ strategy.job-index }}
+          path: |
+            dist/release/*.zip
+            dist/release/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/release
+          merge-multiple: true
+      - name: Create checksums
+        working-directory: dist/release
+        run: sha256sum *.tar.gz *.zip > checksums.txt
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" dist/release/*.tar.gz dist/release/*.zip dist/release/checksums.txt \
+            --verify-tag --draft --prerelease --title "$RELEASE_TAG" \
+            --notes-file "changelogs/$RELEASE_TAG.md"
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease

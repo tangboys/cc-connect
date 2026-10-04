@@ -7,7 +7,6 @@ $scriptPath = Join-Path $DataDir 'cc-connect-daemon.ps1'
 if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
     throw 'Install cc-connect daemon before installing the UTF-8 shell.'
 }
-$go = (Get-Command go -CommandType Application -ErrorAction Stop).Source
 $script = [IO.File]::ReadAllText($scriptPath)
 $pathPattern = '(?m)^\$env:PATH = ''((?:[^''\r\n]|'''')*)''\r?$'
 $pathLines = [regex]::Matches($script, $pathPattern)
@@ -33,9 +32,15 @@ New-Item -ItemType Directory -Path $shellDir -Force | Out-Null
 $temporaryExe = Join-Path $shellDir 'pwsh.new.exe'
 $targetExe = Join-Path $shellDir 'pwsh.exe'
 try {
-    & $go build -trimpath -ldflags '-s -w' -o $temporaryExe (Join-Path $PSScriptRoot 'main_windows.go')
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Failed to build the UTF-8 shell.'
+    $bundledExe = Join-Path $PSScriptRoot 'pwsh.exe'
+    if (Test-Path -LiteralPath $bundledExe -PathType Leaf) {
+        Copy-Item -LiteralPath $bundledExe -Destination $temporaryExe
+    } else {
+        $go = (Get-Command go -CommandType Application -ErrorAction Stop).Source
+        & $go build -trimpath -ldflags '-s -w' -o $temporaryExe (Join-Path $PSScriptRoot 'main_windows.go')
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to build the UTF-8 shell.'
+        }
     }
     $backupDir = Join-Path $DataDir ('backups\utf8-shell-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
     New-Item -ItemType Directory -Path $backupDir | Out-Null
