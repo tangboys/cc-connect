@@ -4,9 +4,35 @@ package daemon
 
 import (
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
+
+func TestSupervisorLog_CoexistsWithOpenBackendLog(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "backend.log")
+	backend, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+	script := buildWindowsTaskScript(Config{LogFile: logPath})
+	prefix, _, ok := strings.Cut(script, "$process = $null")
+	if !ok {
+		t.Fatal("supervisor entry not found")
+	}
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", prefix+"\nWrite-SupervisorLog 'sharing probe'")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("supervisor cannot log alongside backend: %v\n%s", err, output)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil || !strings.Contains(string(data), "windows supervisor: sharing probe") {
+		t.Fatalf("supervisor log missing: %q, %v", data, err)
+	}
+}
 
 func TestStrictPowerShellStopsOnCmdletErrors(t *testing.T) {
 	script := strictPowerShell("Write-Output 'ok'")

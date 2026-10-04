@@ -241,7 +241,9 @@ func buildWindowsTaskScript(cfg Config) string {
 	fmt.Fprintf(&sb, "$statePath = %s\r\n$binary = %s\r\n", powerShellLiteral(windowsProcessStatePath()), powerShellLiteral(cfg.BinaryPath))
 	sb.WriteString(`
 function Write-SupervisorLog($message) {
-    [IO.File]::AppendAllText($env:CC_LOG_FILE, "$(Get-Date -Format o) windows supervisor: $message` + "`r`n" + `")
+    $line = [Text.Encoding]::UTF8.GetBytes("$(Get-Date -Format o) windows supervisor: $message` + "`r`n" + `")
+    $log = [IO.File]::Open($env:CC_LOG_FILE, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+    try { $log.Write($line, 0, $line.Length) } finally { $log.Dispose() }
 }
 $process = $null
 try {
