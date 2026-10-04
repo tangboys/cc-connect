@@ -36,7 +36,7 @@ try {
     if (Test-Path -LiteralPath $bundledExe -PathType Leaf) {
         Copy-Item -LiteralPath $bundledExe -Destination $temporaryExe
     } else {
-        $go = (Get-Command go -CommandType Application -ErrorAction Stop).Source
+        $go = (Get-Command go -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
         & $go build -trimpath -ldflags '-s -w' -o $temporaryExe (Join-Path $PSScriptRoot 'main_windows.go')
         if ($LASTEXITCODE -ne 0) {
             throw 'Failed to build the UTF-8 shell.'

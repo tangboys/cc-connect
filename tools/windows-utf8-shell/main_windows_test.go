@@ -153,3 +153,30 @@ func TestInstaller_BundledWrapperDoesNotRequireGo(t *testing.T) {
 		t.Fatalf("installed wrapper = %q, error = %v", installed, err)
 	}
 }
+
+func TestInstaller_MultipleGoCommandsUsesFirst(t *testing.T) {
+	goPath, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip(err)
+	}
+	dataDir, otherGoDir := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, "cc-connect-daemon.ps1"), []byte("$env:PATH = 'C:\\Windows\\System32'\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(otherGoDir, "go.cmd"), []byte("@echo off\r\nexit /b 99\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	installer, err := filepath.Abs("install.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	powershell := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	cmd := exec.Command(powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installer, "-DataDir", dataDir)
+	cmd.Env = append(os.Environ(), "PATH="+filepath.Dir(goPath)+";"+otherGoDir+";"+os.Getenv("PATH"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("install with multiple Go commands: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "utf8-shell", "pwsh.exe")); err != nil {
+		t.Fatal(err)
+	}
+}

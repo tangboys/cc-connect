@@ -5,12 +5,12 @@
 验证结果、已知限制及完整差异，尤其记录本分支相对上游的改动。
 
 版本标签采用 `v<主版本>.<次版本>.<修订号>-tangboys.<序号>`，例如
-`v1.5.3-tangboys.1`。完成该提交的检查后推送提交及标签：
+`v1.5.3-tangboys.2`。完成该提交的检查后推送提交及标签：
 
 ```bash
 git push origin main
-git tag v1.5.3-tangboys.1
-git push origin v1.5.3-tangboys.1
+git tag v1.5.3-tangboys.2
+git push origin v1.5.3-tangboys.2
 ```
 
 `.github/workflows/release.yml` 自动构建六个平台包，执行 Windows UTF-8 回归测试，
