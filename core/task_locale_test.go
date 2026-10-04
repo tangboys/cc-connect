@@ -87,12 +87,13 @@ func TestRichCard_StopAndErrorFinalizeWithTaskLocale(t *testing.T) {
 				}
 				time.Sleep(time.Millisecond)
 			}
-			if mode == "stop" {
+			switch mode {
+			case "stop":
 				state.markStopped()
-			} else if mode == "closed" {
+			case "closed":
 				s.events <- Event{Type: EventText, Content: "部分回复"}
 				close(s.events)
-			} else {
+			default:
 				s.events <- Event{Type: EventError, Error: fmt.Errorf("failure")}
 			}
 			select {
