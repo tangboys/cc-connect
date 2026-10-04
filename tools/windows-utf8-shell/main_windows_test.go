@@ -1,0 +1,128 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"testing"
+)
+
+func TestUTF8ShellProcess(t *testing.T) {
+	if os.Getenv("CC_UTF8_SHELL_TEST") != "1" {
+		return
+	}
+	for i, arg := range os.Args {
+		if arg == "--" {
+			os.Exit(runShell(os.Args[i+1:]))
+		}
+	}
+	os.Exit(1)
+}
+
+func TestUTF8Shell_ChineseOutputAndExitCode(t *testing.T) {
+	if _, err := findPowerShell(); err != nil {
+		t.Skip(err)
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(self, "-test.run=^TestUTF8ShellProcess$", "--", "-NoProfile", "-Command",
+		`[Console]::OutputEncoding.WebName; Write-Output '中文目录'; [Console]::Error.WriteLine('中文错误'); exit 7`)
+	cmd.Env = append(os.Environ(), "CC_UTF8_SHELL_TEST=1")
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err = cmd.Run()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 7 {
+		t.Fatalf("exit = %v, want 7; stderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "utf-8") || !strings.Contains(stdout.String(), "中文目录") {
+		t.Fatalf("unexpected stdout: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "中文错误") {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+// Reproduce the real install -> daemon environment -> per-session PATH
+// injection journey. A project-only PATH override was overwritten by this
+// injection, so testing the wrapper alone missed the user-visible bug.
+func TestInstaller_UTF8SurvivesSessionPATHInjection(t *testing.T) {
+	powershell, err := findPowerShell()
+	if err != nil {
+		t.Skip(err)
+	}
+	dataDir := filepath.Join(t.TempDir(), "中文目录")
+	if err := os.Mkdir(dataDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath := filepath.Join(dataDir, "cc-connect-daemon.ps1")
+	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
+	if err := os.WriteFile(scriptPath, []byte("$env:PATH = "+quote(os.Getenv("PATH"))+"\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	installer, err := filepath.Abs("install.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installer, "-DataDir", dataDir)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("install %d: %v\n%s", i, err, out)
+		}
+	}
+	wrapper := filepath.Join(dataDir, "utf8-shell", "pwsh.exe")
+	// Match the engine prepending its binary directory to the daemon's PATH.
+	check := ". " + quote(scriptPath) + "; $env:PATH = " + quote(t.TempDir()) +
+		" + ';' + $env:PATH; @{path=$env:PATH; shell=(Get-Command pwsh).Source} | ConvertTo-Json -EscapeHandling EscapeNonAscii -Compress"
+	cmd := exec.Command(powershell, "-NoProfile", "-Command", check)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("daemon environment: %v\n%s", err, out)
+	}
+	var environment struct{ Path, Shell string }
+	if err := json.Unmarshal(out, &environment); err != nil {
+		t.Fatalf("decode daemon environment: %v\n%s", err, out)
+	}
+	if environment.Shell != wrapper {
+		t.Fatalf("selected shell = %q, want %q", environment.Shell, wrapper)
+	}
+	// Launch directly as Codex does, without an outer PowerShell recoding the
+	// native process output through its own CP936 pipeline.
+	cmd = exec.Command(environment.Shell, "-NoProfile", "-Command",
+		`[Console]::OutputEncoding.WebName; (Get-Location).Path; Write-Output '中文文件'; exit 7`)
+	cmd.Env = append(os.Environ(), "PATH="+environment.Path)
+	cmd.Dir = dataDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
+	out, err = cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 7 {
+		t.Fatalf("probe: %v\n%s", err, out)
+	}
+	for _, want := range []string{"utf-8", "中文目录", "中文文件"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("output missing %q: %s", want, out)
+		}
+	}
+	if strings.ContainsRune(string(out), '\uFFFD') {
+		t.Errorf("output contains replacement characters: %s", out)
+	}
+	script, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(script), filepath.Dir(wrapper)); n != 1 {
+		t.Errorf("wrapper directory appears %d times after reinstall, want 1", n)
+	}
+	backups, err := filepath.Glob(filepath.Join(dataDir, "backups", "utf8-shell-*", "cc-connect-daemon.ps1"))
+	if err != nil || len(backups) != 2 {
+		t.Errorf("backups = %v, error = %v", backups, err)
+	}
+}

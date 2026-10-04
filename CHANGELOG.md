@@ -1,5 +1,37 @@
 # Changelog
 
+## tangboys fork updates (2026-10-04)
+
+以下记录本分支的更新；上游版本记录保留在下方。
+
+### Windows UTF-8 工具输出与飞书单卡配置
+
+- 新增可选的 [Windows UTF-8 PowerShell 包装程序与安装脚本](tools/windows-utf8-shell/README.md)。在 PowerShell 启动前设置控制台代码页 65001，解决 CP936 环境中 Codex 工具输出的中文路径、目录名乱码；保留标准输入、标准输出、标准错误和原始退出码，继续使用 Codex 沙箱。
+- 包装程序自动从 `PATH` 查找真实 `pwsh.exe`，跳过自身，不包含个人目录或机器人凭证。安装脚本备份后台脚本及已有包装程序，在后台启动环境中前置包装程序目录；重复安装不会重复追加。
+- 修复方案应用到后台启动环境：cc-connect 会注入任务 `PATH` 并覆盖项目环境中的同名值，仅设置 `[projects.agent.options.env]` 的 `PATH` 无法保证包装程序生效。当前修复通过可选安装脚本启用，已有安装不自动迁移。
+- 补充[飞书整轮单卡配置](docs/feishu.md#整轮单卡展示)：项目中设置 `[projects.display] card_mode = "rich"`，复用已有卡片渲染，减少工具消息刷屏和重复引用；正常完成后收起工具区，保留正文。长内容沿用截断、最近 10 步和超长正文分卡规则。此项是已有功能的配置说明。
+- 验证：在实际 Codex 只读沙箱和机器人会话上下文中复现乱码后验证 UTF-8 输出，用户已确认飞书新卡片中文正常；新增安装、环境覆盖、中文标准输出/标准错误、退出码及重复安装回归测试。旧卡片中已丢失的字符无法恢复。
+- 检查限制：本次工具的回归测试、全项目构建和工具 `go vet` 通过；Windows 全量测试仍有原有的跨平台用例失败和 CLI 测试超时。
+
+### Codex 插件起停与多语言命令
+
+提交：[`07e7aab2`](https://github.com/tangboys/cc-connect/commit/07e7aab218b39fb51cf57a499d415a007e14747a)，本机运行版本 `v1.5.2-tangboys-codex-plugin`。
+
+- 新增本地 Codex 插件和 `cc-connect codex-plugin` MCP 入口；插件建立连接时启动机器人后台，关闭 Codex 桌面窗口后停止连接及其 Agent 进程，取消此模式的 Windows 登录触发。
+- 多个聊天复用后台连接，关闭单个聊天不影响其他聊天；空白桌面窗口尚未加载插件会话时需打开一个聊天触发 MCP 初始化。
+- 内置命令增加简体中文、繁体中文、日文、西班牙文入口，英文入口继续有效；`/语言 中文` 切换回复和帮助语言，别名沿用原有权限校验。
+- 保留独立执行会话：当前插件管理连接生命周期，桌面与飞书共享任务的输入、暂停同步尚未实现。
+- 补充插件生命周期、命令别名与用户操作流程测试，以及中英文使用文档。
+
+### Windows 后台守护初版
+
+提交：[`4bb000e6`](https://github.com/tangboys/cc-connect/commit/4bb000e642362a0817ea65e884b30e2872236c24)。
+
+- 增加隐藏的 Windows 后台守护程序，无需保留 CMD / PowerShell 窗口；异常退出后 10 秒重试，启动错误写入已有日志。
+- 增加 `daemon install --with-codex`；首版在 Windows 登录启动后等待 Codex 桌面窗口出现，再建立机器人连接。每次启动重新发现当前 Codex CLI 路径，适配桌面应用更新；后续插件版改为由 MCP 连接触发，并随桌面窗口关闭而停止。
+- 记录并校验受管进程的程序路径和启动时间，停止/重启时清理受管进程树；后台 `/restart` 交由守护程序恢复。
+- 保留电池供电时的后台运行，并补充 Windows 恢复、进程清理及重启回归测试。`daemon status` 查看状态，`daemon logs -f` 查看日志，关闭日志查看窗口不停止后台。
+
 ## v1.5.1-beta.1 (2026-08-28)
 
 Beta since v1.5.0 stable — 16 merged PRs focused on Feishu/Weixin reliability, Claude Code /compact, Codex reasoning, and Cursor image attachments. See `changelogs/v1.5.1-beta.1.md` for the full contributor list.

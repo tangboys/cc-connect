@@ -922,6 +922,10 @@ codex plugin add cc-connect@cc-connect-local
 
 `daemon stop` 停止后台连接和它管理的进程树，`daemon restart` 在 Codex 打开时恢复后台运行。`daemon status` 显示状态和进程 ID；`daemon logs -n 100` 查看最近日志，`daemon logs -f` 实时查看。关闭日志窗口或按 Ctrl+C 只会停止查看日志。启动错误也写入同一个日志文件。禁用或移除插件后，不带 `--with-codex` 重新安装即可恢复登录 Windows 时直接启动的行为。
 
+Windows 下 Codex 工具输出的中文路径出现乱码时，参见
+[UTF-8 PowerShell 安装说明](../tools/windows-utf8-shell/README.md)。包装程序需放在
+后台启动的 `PATH` 中，避免被任务环境覆盖；重新安装后台服务后需再次启用。
+
 ---
 
 ## 多工作区模式
