@@ -1,8 +1,16 @@
 # Changelog
 
-## v1.5.3-tangboys.2 (2026-10-04)
+## v1.5.3-tangboys.3 (2026-10-04)
 
-本分支首次公开预发布，包含下方功能及安装兼容性修复。完整说明见
+本分支首次公开预发布，包含下方全部功能与安装修复。完整说明见
+[changelogs/v1.5.3-tangboys.3.md](changelogs/v1.5.3-tangboys.3.md)。
+
+- Windows 安装回归测试按文件身份确认包装程序，兼容构建机返回同一文件的长路径与 8.3 短路径。
+- 补正发布工作流的校验文件生成命令，满足 ShellCheck 检查。
+
+## v1.5.3-tangboys.2 — 未发布 (2026-10-04)
+
+包含下方功能及安装兼容性修复；Windows CI 因长短路径字符串比较误判而停止，未生成 Release。原说明见
 [changelogs/v1.5.3-tangboys.2.md](changelogs/v1.5.3-tangboys.2.md)。
 
 - 修复源码安装 UTF-8 包装程序时，多个 Go 命令路径被拼接而导致构建失败的问题；使用 PATH 中优先找到的命令，并增加复现该问题的回归测试。

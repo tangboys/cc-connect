@@ -91,7 +91,15 @@ func TestInstaller_UTF8SurvivesSessionPATHInjection(t *testing.T) {
 	if err := json.Unmarshal(out, &environment); err != nil {
 		t.Fatalf("decode daemon environment: %v\n%s", err, out)
 	}
-	if environment.Shell != wrapper {
+	selectedShell, err := os.Stat(environment.Shell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedShell, err := os.Stat(wrapper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(selectedShell, expectedShell) {
 		t.Fatalf("selected shell = %q, want %q", environment.Shell, wrapper)
 	}
 	// Launch directly as Codex does, without an outer PowerShell recoding the
