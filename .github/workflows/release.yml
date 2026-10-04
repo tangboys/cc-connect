@@ -53,6 +53,9 @@ jobs:
       - name: Windows UTF-8 regression tests
         if: matrix.target == 'windows/amd64'
         run: go test ./tools/windows-utf8-shell -count=1 -timeout 90s
+      - name: Windows plugin launcher regression tests
+        if: matrix.target == 'windows/amd64'
+        run: go test ./tools/windows-plugin-launcher -count=1 -timeout 90s
       - name: Package release
         shell: pwsh
         env:

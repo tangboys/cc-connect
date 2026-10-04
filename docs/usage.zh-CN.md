@@ -32,7 +32,12 @@ cc-connect 完整功能使用指南。
 ## 多语言命令
 
 内置命令支持英文、简体中文、繁体中文、日文、西班牙文入口。英文命令继续有效；
-`/语言 中文`（等价于 `/lang zh`）切换回复和帮助页语言，`config.toml` 中也可设置 `language = "zh"`。
+默认使用 `language = "auto"`（留空也表示自动）：中文输入使用中文模板，英文输入使用英文模板。
+语言在别名替换、命令转换和引用合并前确定；斜杠命令只看命令名，因此 `/help D:/中文目录` 仍使用英文。
+每条消息、排队任务和执行中的卡片保留自己的语言，另一个聊天或执行期间的 `/help` 不会改变原任务模板。
+`/语言 中文`（等价于 `/lang zh`）固定回复和帮助页语言，并保存配置；`/语言 auto` 或 `/lang auto` 恢复自动。
+自动检测不会再把配置写成固定语言，重启后仍为 auto。项目级固定语言优先于全局设置。
+飞书按钮沿用所属卡片的语言，旧卡片缺少元数据时使用该会话最近的语言。
 命令参数仍沿用原来的值，例如模型 ID、推理等级和 `list`、`add` 等子命令。
 
 | 中文命令 | 英文命令 |
@@ -908,7 +913,15 @@ cc-connect daemon uninstall
 ```
 
 Windows 上可通过 Codex 插件启动后台连接。在本仓库目录执行，确保 PATH 中的
-`cc-connect` 是新版本，或先在 `codex-plugin/.mcp.json` 中填写新版本程序的绝对路径：
+`cc-connect.exe` 和 `cc-connect-plugin.exe` 都是新版本且位于同一目录，或在 `codex-plugin/.mcp.json` 中填写启动器的绝对路径。
+Windows 发布 ZIP 已包含两个程序；源码构建还需执行：
+
+```powershell
+go build -ldflags '-s -w -H windowsgui' -o cc-connect-plugin.exe ./tools/windows-plugin-launcher
+```
+
+启动器无控制台窗口，负责转交 MCP stdio 和退出码；主 CLI 仍可正常在终端使用。
+已安装插件使用 Codex 缓存，修改源定义后需要重新加载该插件。然后安装后台：
 
 ```powershell
 cc-connect daemon install --with-codex --force --config "$env:USERPROFILE\.cc-connect\config.toml"
@@ -1229,3 +1242,26 @@ proxy_password = ""
 
 完整说明见 [docs/telegram.md](./telegram.md#21-optional-use-a-proxy)（英文原文，
 `docs/telegram.md` 目前只有英文版）。该配置由 PR #389 引入。
+
+
+## 任务结束信息与账号额度
+
+飞书富卡片在执行期间展开工具区，完成、失败或停止后收起；正文和已收到的统计保持可见。
+示例数字仅用于说明，路径使用通用示例：
+
+```text
+⏱ 用时 11.6 秒
+模型：运行时模型 · 推理：极高（xhigh）
+Token：输入 127.2k · 输出 5 · 缓存命中 124.7k
+上下文：127.2k / 258.4k（已用 49%）
+额度：五小时已用 34%，10-04 22:30 UTC+08:00 重置 · 本周已用 29%
+工作目录：D:/work/project
+```
+
+模型、推理与容量来自实际执行会话。Token 是最新请求的统计，不是整轮累积；缓存命中包含在输入中，不能再次相加，也不代表金额。上下文显示已用 Token / 实际容量和已用百分比。
+
+五小时及一周额度是登录账号的已用百分比，与上下文占用分别展示。按接口返回的窗口长度识别，五小时重置时间按运行主机时区显示 UTC 偏移。数据缓存 30 秒，查询最多等待 1.5 秒；缺失、超时或重置已过的旧窗口隐藏，不显示伪造的 0%。接口来源见 [官方 app-server 文档](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)。
+
+`reply_footer` 控制整体，`show_context_indicator` 控制模型/推理/Token/上下文/额度，`show_workdir_indicator` 控制目录。保留现有 `[projects.display] card_mode = "rich"`；正常长度的一轮复用同一卡片，最近 10 步、限长和超长分卡规则不变。
+
+更多问题见 [故障排查](troubleshooting.zh-CN.md)，开发入口见 [文档索引](README.md)。

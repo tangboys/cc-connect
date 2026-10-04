@@ -35,6 +35,8 @@ try {
         New-Item -ItemType Directory -Path $marketplaceDir -Force | Out-Null
         Copy-Item -LiteralPath (Join-Path $root '.agents/plugins/marketplace.json') -Destination $marketplaceDir
         if ($env:GOOS -eq 'windows') {
+            & go build -trimpath -ldflags '-s -w -H windowsgui' -o (Join-Path $stage 'cc-connect-plugin.exe') ./tools/windows-plugin-launcher
+            if ($LASTEXITCODE -ne 0) { throw "Plugin launcher build failed: $target" }
             $shellDir = Join-Path $stage 'tools/windows-utf8-shell'
             New-Item -ItemType Directory -Path $shellDir -Force | Out-Null
             Copy-Item -LiteralPath (Join-Path $root 'tools/windows-utf8-shell/install.ps1') -Destination $shellDir

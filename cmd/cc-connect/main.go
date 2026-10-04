@@ -897,12 +897,14 @@ func main() {
 			}
 		}
 
-		// Set up save callback for auto-detected language
-		if lang == core.LangAuto {
-			engine.SetLanguageSaveFunc(func(l core.Language) error {
-				return config.SaveLanguage(string(l))
-			})
-		}
+		// Persist explicit language changes; automatic detection remains in memory.
+		engine.SetLanguageSaveFunc(func(l core.Language) error {
+			value := string(l)
+			if l == core.LangAuto {
+				value = "auto"
+			}
+			return config.SaveLanguage(value)
+		})
 
 		// Set up save callbacks for provider management
 		projName := proj.Name
