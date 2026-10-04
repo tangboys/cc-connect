@@ -9,6 +9,17 @@ on:
     types: [published]
 
 jobs:
+  windows-utf8-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Windows UTF-8 regression tests
+        run: go test ./tools/windows-utf8-shell -count=1 -timeout 90s
+
   lint:
     runs-on: ubuntu-latest
     steps:

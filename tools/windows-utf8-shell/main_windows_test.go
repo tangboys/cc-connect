@@ -122,11 +122,17 @@ func TestInstaller_UTF8SurvivesSessionPATHInjection(t *testing.T) {
 	if strings.ContainsRune(string(out), '\uFFFD') {
 		t.Errorf("output contains replacement characters: %s", out)
 	}
-	script, err := os.ReadFile(scriptPath)
+	wrapperDir, err := os.Stat(filepath.Dir(wrapper))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(string(script), filepath.Dir(wrapper)); n != 1 {
+	n := 0
+	for _, entry := range filepath.SplitList(environment.Path) {
+		if info, err := os.Stat(entry); err == nil && os.SameFile(info, wrapperDir) {
+			n++
+		}
+	}
+	if n != 1 {
 		t.Errorf("wrapper directory appears %d times after reinstall, want 1", n)
 	}
 	backups, err := filepath.Glob(filepath.Join(dataDir, "backups", "utf8-shell-*", "cc-connect-daemon.ps1"))
