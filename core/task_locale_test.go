@@ -60,12 +60,13 @@ func TestCUJ_L2_RunningTaskKeepsLocaleWhileCommandsChange(t *testing.T) {
 }
 
 func TestRichCard_StopAndErrorFinalizeWithTaskLocale(t *testing.T) {
-	for _, stopped := range []bool{false, true} {
-		t.Run(fmt.Sprint(stopped), func(t *testing.T) {
+	for _, mode := range []string{"error", "stop", "closed"} {
+		t.Run(mode, func(t *testing.T) {
 			p := &localeRichPlatform{&stubRichCardSilentPlatform{stubPlatformEngine: stubPlatformEngine{n: "test"}}}
 			e := NewEngine("locale", &stubAgent{}, []Platform{p}, "", LangEnglish)
 			e.SetReplyFooterEnabled(true)
 			e.SetDisplayConfig(DisplayCfg{Mode: "full", CardMode: "rich", ToolMessages: true, ToolMaxLen: 500})
+			defer e.cancel()
 			s := newControllableSession("stop-locale")
 			state := &interactiveState{language: LangChinese, platform: p, replyCtx: "ctx", agentSession: s}
 			session := e.sessions.GetOrCreateActive("test:alice")
@@ -86,8 +87,11 @@ func TestRichCard_StopAndErrorFinalizeWithTaskLocale(t *testing.T) {
 				}
 				time.Sleep(time.Millisecond)
 			}
-			if stopped {
+			if mode == "stop" {
 				state.markStopped()
+			} else if mode == "closed" {
+				s.events <- Event{Type: EventText, Content: "部分回复"}
+				close(s.events)
 			} else {
 				s.events <- Event{Type: EventError, Error: fmt.Errorf("failure")}
 			}
@@ -104,8 +108,19 @@ func TestRichCard_StopAndErrorFinalizeWithTaskLocale(t *testing.T) {
 			if !strings.Contains(last, "locale=zh") || !strings.Contains(last, "⏱ 用时") {
 				t.Fatal(last)
 			}
-			if stopped && !strings.Contains(last, "status=stopped") {
+			if mode == "stop" && !strings.Contains(last, "status=stopped") {
 				t.Fatal(last)
+			}
+			if mode == "closed" {
+				if !strings.Contains(last, "status=error") || !strings.Contains(last, "部分回复") {
+					t.Fatal(last)
+				}
+				if sent := p.getSent(); len(sent) != 0 {
+					t.Fatalf("duplicate plain replies after card finalization: %v", sent)
+				}
+				if history := session.GetHistory(1); len(history) != 1 || history[0].Content != "部分回复" {
+					t.Fatalf("partial response history was lost: %v", history)
+				}
 			}
 		})
 	}

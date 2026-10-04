@@ -5207,7 +5207,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 	var lastRichCardUpdate time.Time
 	var lastRichCardLen int
 	var cardMessageID any
-	var finishRichCard func(stopped bool)
+	var finishRichCard func(stopped bool) bool
 	var partialText string
 	triggerAutoCompress := false
 	pendingSend := sendDone
@@ -5454,9 +5454,9 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			return buildLocalizedRichCard(status, title, steps, resolveRichCardMarkdown(markdown, !streaming), streaming, statusFooter)
 		}
 
-		finishRichCard = func(stopped bool) {
+		finishRichCard = func(stopped bool) bool {
 			if !hasRichCard || cardMessageID == nil {
-				return
+				return false
 			}
 			body := partialText
 			status := CardStatusError
@@ -5468,8 +5468,11 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			if updater, ok := p.(MessageUpdater); ok {
 				if err := updater.UpdateMessage(e.ctx, cardMessageID, card); err != nil {
 					slog.Warn("finalize interrupted rich card", "error", err)
+					return false
 				}
+				return true
 			}
+			return false
 		}
 		switch event.Type {
 		case EventHookRejected:
@@ -6177,7 +6180,8 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			// through BuildRichCard, so re-appending the legacy footer here
 			// would double-print model/ctx/workdir into the card body.
 			var statusFooter string
-			if !isSilent && !hasRichCard {
+			_, reportsContext := footerSession.(ContextUsageReporter)
+			if !isSilent && (!hasRichCard || !reportsContext) {
 				footerContext := replyFooterContextText(replyFooterSessionContextUsage(state.agentSession), i18n)
 				if e.showContextIndicator {
 					if sdkPlausible {
@@ -6302,6 +6306,11 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 					parts = splitter.SplitMarkdownByTables(fullResponse, 5)
 				}
 				richStatusFooter := e.composeRichStatusFooter(false, turnStart, replyAgent, footerSession, state.workspaceDir, i18n)
+				// Preserve the explicitly approximate footer for agents without
+				// runtime context reporting; Codex uses its actual capacity.
+				if !reportsContext && statusFooter != "" {
+					richStatusFooter = formatElapsed(time.Since(turnStart), false, i18n.CurrentLang()) + "\n" + statusFooter
+				}
 				finalBody := resolveRichCardMarkdown(parts[0], true)
 				finalCard := buildLocalizedRichCard(CardStatusDone, "", toolSteps, finalBody, false, richStatusFooter)
 				if cardMessageID != nil {
@@ -6630,8 +6639,9 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 	}
 
 channelClosed:
+	richCardFinalized := false
 	if finishRichCard != nil {
-		finishRichCard(state.isStopped())
+		richCardFinalized = finishRichCard(state.isStopped())
 	}
 	// Channel closed - process exited unexpectedly
 	slog.Warn("agent process exited", "session_key", sessionKey)
@@ -6640,6 +6650,9 @@ channelClosed:
 	state.mu.Unlock()
 	e.notifyDroppedQueuedMessages(state, fmt.Errorf("agent process exited"))
 	e.cleanupInteractiveState(sessionKey, state)
+	if richCardFinalized && len(textParts) == 0 {
+		return
+	}
 
 	if len(textParts) > 0 {
 		state.mu.Lock()
@@ -6673,6 +6686,9 @@ channelClosed:
 			Platform:   p.Name(),
 			Content:    fullResponse,
 		})
+		if richCardFinalized {
+			return
+		}
 
 		if toolCount > 0 && segmentStart > 0 {
 			sp.discard()
