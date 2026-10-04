@@ -53,4 +53,19 @@ func main(){if len(os.Args)!=2 || os.Args[1]!="codex-plugin" {os.Exit(99)};var r
 	if !strings.Contains(stdout.String(), `"jsonrpc":"2.0"`) || !strings.Contains(stderr.String(), "EOF received") {
 		t.Fatalf("stdio: out=%q err=%q", stdout.String(), stderr.String())
 	}
+
+	// The task scheduler must enter through the GUI launcher too. Starting
+	// powershell.exe with WindowStyle Hidden still opens Windows Terminal.
+	script := filepath.Join(dir, "supervisor probe.ps1")
+	if err := os.WriteFile(script, []byte(`Add-Type 'using System; using System.Runtime.InteropServices; public class ConsoleProbe { [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); }'; [ConsoleProbe]::GetConsoleWindow().ToInt64(); [Console]::Error.WriteLine('supervisor stderr'); exit 7`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.CommandContext(ctx, launcher, "--supervisor", script)
+	stdout.Reset()
+	stderr.Reset()
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err = cmd.Run()
+	if err == nil || cmd.ProcessState.ExitCode() != 7 || strings.TrimSpace(stdout.String()) != "0" || !strings.Contains(stderr.String(), "supervisor stderr") {
+		t.Fatalf("supervisor must have no console and forward exit/stdio: %v out=%q err=%q", err, stdout.String(), stderr.String())
+	}
 }

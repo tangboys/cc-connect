@@ -6,6 +6,10 @@ whose console code page is CP936. It starts PowerShell with console code page
 The next `pwsh.exe` in `PATH` is selected dynamically; no user or runtime path is
 hardcoded. Codex's sandbox and permission mode still apply.
 
+When Codex launches a detached tool, the wrapper reexecutes itself with
+`CREATE_NO_WINDOW` to obtain a console code page without creating a visible
+window or Windows Terminal tab. It does not allocate a window and hide it later.
+
 ## 安装
 
 适用于 Windows、已安装 PowerShell 7、已有 `cc-connect daemon` 的环境。

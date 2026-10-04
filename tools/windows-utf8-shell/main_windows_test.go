@@ -51,6 +51,31 @@ func TestUTF8Shell_ChineseOutputAndExitCode(t *testing.T) {
 	}
 }
 
+func TestUTF8Shell_DetachedProcessHasNoConsoleWindow(t *testing.T) {
+	if _, err := findPowerShell(); err != nil {
+		t.Skip(err)
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(self, "-test.run=^TestUTF8ShellProcess$", "--", "-NoProfile", "-Command",
+		`Add-Type 'using System; using System.Runtime.InteropServices; public class ConsoleProbe { [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); }'; [ConsoleProbe]::GetConsoleWindow().ToInt64(); [Console]::OutputEncoding.WebName; [Console]::In.ReadLine(); '中文目录'; [Console]::Error.WriteLine('中文错误'); exit 7`)
+	cmd.Env = append(os.Environ(), "CC_UTF8_SHELL_TEST=1")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 8} // DETACHED_PROCESS, as used by Codex.
+	cmd.Stdin = strings.NewReader("stdin中文\n")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err = cmd.Run()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 7 {
+		t.Fatalf("exit = %v, want 7; stderr: %s", err, stderr.String())
+	}
+	if !strings.HasPrefix(stdout.String(), "0\r\nutf-8\r\n") || !strings.Contains(stdout.String(), "stdin中文") || !strings.Contains(stdout.String(), "中文目录") || !strings.Contains(stderr.String(), "中文错误") {
+		t.Fatalf("detached shell created a console window or lost UTF-8: out=%q err=%q", stdout.String(), stderr.String())
+	}
+}
+
 // Reproduce the real install -> daemon environment -> per-session PATH
 // injection journey. A project-only PATH override was overwritten by this
 // injection, so testing the wrapper alone missed the user-visible bug.

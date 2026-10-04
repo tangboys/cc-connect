@@ -12,6 +12,10 @@
 
 **回退**：停止本插件后台，恢复已备份程序及 MCP 定义，再重新加载插件。恢复旧主程序时也恢复与其配套的定义。不要终止所有 `cmd.exe`、`codex.exe` 或 Codex 桌面进程。
 
+**Windows Terminal 留在任务栏**：`powershell.exe -WindowStyle Hidden` 和 `Start-Process -WindowStyle Hidden` 仍会创建控制台，默认终端可能留下最小化窗口。任务计划现使用 `cc-connect-plugin.exe --supervisor <脚本路径>`，由 GUI 启动器以 `CREATE_NO_WINDOW` 创建 PowerShell；脚本以 `UseShellExecute = false`、`CreateNoWindow = true` 创建后台。更新主程序时也更新配套启动器，并重新安装任务动作；只换 MCP 定义不能修复旧任务计划。
+
+**执行工具时闪窗**：旧 UTF-8 包装程序在 detached 进程中调用 `AllocConsole`，随后隐藏窗口，存在窗口先出现的间隙。新包装程序创建无窗口工作进程，再设置代码页 65001；中文输出和退出码保持原行为。也需更新已安装的 `utf8-shell/pwsh.exe`。
+
 ## 空闲时控制台闪现，守护状态与后台进程不一致
 
 **诊断**：查看 `Get-ScheduledTaskInfo -TaskName cc-connect` 的 LastRunTime / LastTaskResult，再对比后台进程的启动时间。退出码 1、任务重复启动、原后台仍在运行时，应先检查守护错误；也需按父进程区分 Codex 其他插件和编码包装程序。
@@ -61,6 +65,10 @@
 **诊断**：用 `/usage` 检查登录账号的额度来源；确认当前是支持返回额度的登录方式，检查网络和日志中的接口错误。自带 API Provider 可能不提供 ChatGPT 五小时/周额度，缺失不会显示为 0%。重置时间按运行主机时区显示。
 
 **回退**：网络恢复后下一次有效查询会恢复额度。无需删除登录凭证或重新创建会话。可关闭 `show_context_indicator` 暂时隐藏指标，保留 `reply_footer`、`show_workdir_indicator` 原有控制方式。
+
+## 上下文用量多轮看似相同
+
+上下文取最新请求统计，紧凑 Token 数保留一位小数，百分比取整数。连续短请求可能只增加十几个 Token，例如 127,356 和 127,369 都显示 `127.4k`，容量为 258,400 时均显示 49%。先对比当前机器人线程 rollout 的最新 `token_count.info.last_token_usage` 和时间戳，不能仅凭卡片数字相同断言数据未更新。不要把累计请求 Token 当成当前上下文，也不要为了让数字变化而添加估算值。
 
 ## 验证与 Windows 全量测试
 

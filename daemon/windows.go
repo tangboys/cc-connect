@@ -42,6 +42,10 @@ func newPlatformManager() (Manager, error) {
 func (*schtasksManager) Platform() string { return "schtasks" }
 
 func (m *schtasksManager) Install(cfg Config) error {
+	launcherPath := filepath.Join(filepath.Dir(cfg.BinaryPath), "cc-connect-plugin.exe")
+	if _, err := os.Stat(launcherPath); err != nil {
+		return fmt.Errorf("Windows daemon requires %s alongside cc-connect.exe: %w", launcherPath, err)
+	}
 	if err := stopWindowsTask(); err != nil {
 		return fmt.Errorf("stop existing task: %w", err)
 	}
@@ -67,7 +71,7 @@ func (m *schtasksManager) Install(cfg Config) error {
 	}
 
 	if err := deleteWindowsTask(); err != nil {
-		if !cfg.StartWithCodex && windowsTaskMatchesAction(scriptPath) {
+		if !cfg.StartWithCodex && windowsTaskMatchesAction(scriptPath, launcherPath) {
 			if err := m.Start(); err != nil {
 				return fmt.Errorf("start existing task: %w", err)
 			}
@@ -76,7 +80,7 @@ func (m *schtasksManager) Install(cfg Config) error {
 		return err
 	}
 
-	if err := createWindowsTask(scriptPath, cfg.StartWithCodex); err != nil {
+	if err := createWindowsTask(scriptPath, launcherPath, cfg.StartWithCodex); err != nil {
 		return err
 	}
 
@@ -165,47 +169,47 @@ if (Test-Path -LiteralPath %s) {
 `, powerShellLiteral(windowsProcessStatePath()), powerShellLiteral(windowsProcessStatePath()))
 }
 
-func windowsTaskAction(scriptPath string) string {
-	return fmt.Sprintf(`powershell.exe %s`, windowsTaskActionArgs(scriptPath))
+func windowsTaskAction(scriptPath, launcherPath string) string {
+	return fmt.Sprintf(`"%s" %s`, launcherPath, windowsTaskActionArgs(scriptPath))
 }
 
 func windowsTaskActionArgs(scriptPath string) string {
-	return fmt.Sprintf(`-WindowStyle Hidden -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%s"`, scriptPath)
+	return fmt.Sprintf(`--supervisor "%s"`, scriptPath)
 }
 
-func createWindowsTask(scriptPath string, startWithCodex bool) error {
+func createWindowsTask(scriptPath, launcherPath string, startWithCodex bool) error {
 	trigger, triggerArg := "", ""
 	if !startWithCodex {
 		trigger = "$trigger = New-ScheduledTaskTrigger -AtLogOn -User $user"
 		triggerArg = "-Trigger $trigger"
 	}
 	out, err := runPowerShell(fmt.Sprintf(`
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument %s
+$action = New-ScheduledTaskAction -Execute %s -Argument %s
 $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 %s
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName %s -Action $action %s -Principal $principal -Settings $settings -Force | Out-Null
-`, powerShellLiteral(windowsTaskActionArgs(scriptPath)), trigger, powerShellLiteral(windowsTaskName), triggerArg))
+`, powerShellLiteral(launcherPath), powerShellLiteral(windowsTaskActionArgs(scriptPath)), trigger, powerShellLiteral(windowsTaskName), triggerArg))
 	if err != nil {
 		return fmt.Errorf("register scheduled task: %s (%w)", out, err)
 	}
 	return nil
 }
 
-func windowsTaskMatchesAction(scriptPath string) bool {
+func windowsTaskMatchesAction(scriptPath, launcherPath string) bool {
 	out, err := runPowerShell(fmt.Sprintf(`
 $task = Get-ScheduledTask -TaskName %s -ErrorAction SilentlyContinue
 if ($null -eq $task) { exit 1 }
 $expectedArgs = %s
 foreach ($action in $task.Actions) {
-	if (($action.Execute -ieq 'powershell.exe') -and ($action.Arguments -eq $expectedArgs)) {
+	if (($action.Execute -ieq %s) -and ($action.Arguments -eq $expectedArgs)) {
 		Write-Output 'true'
 		exit 0
 	}
 }
 exit 1
-`, powerShellLiteral(windowsTaskName), powerShellLiteral(windowsTaskActionArgs(scriptPath))))
+`, powerShellLiteral(windowsTaskName), powerShellLiteral(windowsTaskActionArgs(scriptPath)), powerShellLiteral(launcherPath)))
 	return err == nil && strings.EqualFold(strings.TrimSpace(out), "true")
 }
 
@@ -268,7 +272,12 @@ function Find-CodexDesktop {
 `)
 	}
 	sb.WriteString(`
-    $process = Start-Process -FilePath $binary -WorkingDirectory (Get-Location).Path -WindowStyle Hidden -PassThru
+    $start = New-Object System.Diagnostics.ProcessStartInfo
+    $start.FileName = $binary
+    $start.WorkingDirectory = (Get-Location).Path
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    $process = [System.Diagnostics.Process]::Start($start)
     @{ pid = $process.Id; binary_path = $binary; start_ticks = $process.StartTime.ToUniversalTime().Ticks } | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding UTF8
 `)
 	if cfg.StartWithCodex {

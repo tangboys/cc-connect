@@ -3,13 +3,54 @@
 package daemon
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
+
+func TestSupervisor_BackendStartsWithoutConsoleWindow(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("USERPROFILE", dir)
+	if err := os.MkdirAll(DefaultDataDir(), 0700); err != nil {
+		t.Fatal(err)
+	}
+	probe := filepath.Join(dir, "console.txt")
+	t.Setenv("CC_CONSOLE_PROBE", probe)
+	source := filepath.Join(dir, "probe.go")
+	if err := os.WriteFile(source, []byte(`package main
+import("os";"syscall";"strconv";"time")
+func main(){w,_,_:=syscall.NewLazyDLL("kernel32.dll").NewProc("GetConsoleWindow").Call();os.WriteFile(os.Getenv("CC_CONSOLE_PROBE"),[]byte(strconv.FormatUint(uint64(w),10)),0600);time.Sleep(500*time.Millisecond)}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(dir, "backend.exe")
+	if out, err := exec.Command("go", "build", "-o", binary, source).CombinedOutput(); err != nil {
+		t.Fatalf("build probe: %v\n%s", err, out)
+	}
+	script := buildWindowsTaskScript(Config{BinaryPath: binary, WorkDir: dir, LogFile: filepath.Join(dir, "backend.log")})
+	scriptPath := filepath.Join(dir, "supervisor.ps1")
+	if err := os.WriteFile(scriptPath, []byte(script), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-File", scriptPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("supervisor: %v\n%s", err, out)
+	}
+	data, err := os.ReadFile(probe)
+	if err != nil || string(data) != "0" {
+		t.Fatalf("backend console window = %q, %v; want no window", data, err)
+	}
+	if _, err := os.Stat(windowsProcessStatePath()); !os.IsNotExist(err) {
+		t.Fatalf("state file was not removed after backend exit: %v", err)
+	}
+}
 
 func TestSupervisorLog_CoexistsWithOpenBackendLog(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "backend.log")
@@ -67,8 +108,9 @@ func TestBuildWindowsTaskScript(t *testing.T) {
 		`Set-Location -LiteralPath 'C:\Users\me\.cc-connect'`,
 		`while ($true) {`,
 		`$binary = 'C:\Program Files\cc-connect\cc-connect.exe'`,
-		`Start-Process -FilePath $binary`,
-		`-WindowStyle Hidden -PassThru`,
+		`$start.CreateNoWindow = $true`,
+		`$start.UseShellExecute = $false`,
+		`[System.Diagnostics.Process]::Start($start)`,
 		`Write-SupervisorLog $_.Exception.Message`,
 		`if ($exitCode -eq 0) { exit 0 }`,
 		`Start-Sleep -Seconds 10`,
@@ -80,14 +122,10 @@ func TestBuildWindowsTaskScript(t *testing.T) {
 }
 
 func TestWindowsTaskActionRunsHidden(t *testing.T) {
-	got := windowsTaskAction(`C:\Users\me\.cc-connect\cc-connect-daemon.ps1`)
+	got := windowsTaskAction(`C:\Users\me\.cc-connect\cc-connect-daemon.ps1`, `C:\Program Files\cc-connect\cc-connect-plugin.exe`)
 	for _, want := range []string{
-		`powershell.exe`,
-		`-WindowStyle Hidden`,
-		`-NoProfile`,
-		`-NonInteractive`,
-		`-ExecutionPolicy Bypass`,
-		`-File "C:\Users\me\.cc-connect\cc-connect-daemon.ps1"`,
+		`"C:\Program Files\cc-connect\cc-connect-plugin.exe"`,
+		`--supervisor "C:\Users\me\.cc-connect\cc-connect-daemon.ps1"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("windowsTaskAction() missing %q: %q", want, got)
@@ -105,7 +143,7 @@ func TestWindowsTaskCreateUsesLimitedInteractivePrincipal(t *testing.T) {
 		return "", nil
 	}
 
-	if err := createWindowsTask(`C:\Users\me\.cc-connect\cc-connect-daemon.ps1`, false); err != nil {
+	if err := createWindowsTask(`C:\Users\me\.cc-connect\cc-connect-daemon.ps1`, `C:\cc-connect-plugin.exe`, false); err != nil {
 		t.Fatalf("createWindowsTask() error = %v", err)
 	}
 	for _, want := range []string{
@@ -113,7 +151,8 @@ func TestWindowsTaskCreateUsesLimitedInteractivePrincipal(t *testing.T) {
 		`Register-ScheduledTask`,
 		`-LogonType Interactive`,
 		`-RunLevel Limited`,
-		`-WindowStyle Hidden`,
+		`-Execute 'C:\cc-connect-plugin.exe'`,
+		`--supervisor`,
 		`C:\Users\me\.cc-connect\cc-connect-daemon.ps1`,
 	} {
 		if !strings.Contains(script, want) {
@@ -132,12 +171,12 @@ func TestWindowsTaskMatchesActionRequiresExactAction(t *testing.T) {
 		return "true", nil
 	}
 
-	if !windowsTaskMatchesAction(`C:\Users\me\.cc-connect\cc-connect-daemon.ps1`) {
+	if !windowsTaskMatchesAction(`C:\Users\me\.cc-connect\cc-connect-daemon.ps1`, `C:\cc-connect-plugin.exe`) {
 		t.Fatal("windowsTaskMatchesAction() = false, want true")
 	}
 	for _, want := range []string{
-		`$expectedArgs = '-WindowStyle Hidden -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\me\.cc-connect\cc-connect-daemon.ps1"'`,
-		`$action.Execute -ieq 'powershell.exe'`,
+		`$expectedArgs = '--supervisor "C:\Users\me\.cc-connect\cc-connect-daemon.ps1"'`,
+		`$action.Execute -ieq 'C:\cc-connect-plugin.exe'`,
 		`$action.Arguments -eq $expectedArgs`,
 	} {
 		if !strings.Contains(script, want) {
@@ -197,8 +236,12 @@ func TestSchtasksInstall_ReplacesExistingLauncher(t *testing.T) {
 	}
 
 	mgr := &schtasksManager{}
+	binaryDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(binaryDir, "cc-connect-plugin.exe"), []byte("launcher"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	cfg := Config{
-		BinaryPath: "C:\\cc.exe",
+		BinaryPath: filepath.Join(binaryDir, "cc-connect.exe"),
 		WorkDir:    t.TempDir(),
 		LogFile:    "C:\\cc.log",
 		LogMaxSize: 1024,
@@ -222,7 +265,7 @@ func TestWindowsTaskCreate_KeepsSupervisorRunning(t *testing.T) {
 	t.Cleanup(func() { runPowerShell = orig })
 	var script string
 	runPowerShell = func(s string) (string, error) { script = s; return "", nil }
-	if err := createWindowsTask(`C:\cc-connect-daemon.ps1`, false); err != nil {
+	if err := createWindowsTask(`C:\cc-connect-daemon.ps1`, `C:\cc-connect-plugin.exe`, false); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"-ExecutionTimeLimit ([TimeSpan]::Zero)", "-MultipleInstances IgnoreNew", "-AllowStartIfOnBatteries", "-DontStopIfGoingOnBatteries", "-RestartCount 3", "-Settings $settings"} {
@@ -238,7 +281,7 @@ func TestWindowsTaskCreate_CodexPluginHasNoLoginTrigger(t *testing.T) {
 	var script string
 	runPowerShell = func(s string) (string, error) { script = s; return "", nil }
 	for _, withCodex := range []bool{false, true} {
-		if err := createWindowsTask(`C:\cc-connect-daemon.ps1`, withCodex); err != nil {
+		if err := createWindowsTask(`C:\cc-connect-daemon.ps1`, `C:\cc-connect-plugin.exe`, withCodex); err != nil {
 			t.Fatal(err)
 		}
 		if got := strings.Contains(script, "-AtLogOn"); got == withCodex {

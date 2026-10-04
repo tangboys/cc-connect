@@ -914,6 +914,8 @@ cc-connect daemon uninstall
 
 Windows 上可通过 Codex 插件启动后台连接。在本仓库目录执行，确保 PATH 中的
 `cc-connect.exe` 和 `cc-connect-plugin.exe` 都是新版本且位于同一目录，或在 `codex-plugin/.mcp.json` 中填写启动器的绝对路径。
+
+Windows daemon 的任务计划也使用同目录启动器。升级时同时更新两个 EXE，并重新安装 daemon 以更新任务动作；仅修改 MCP 定义不会更新旧任务计划。已安装 UTF-8 包装程序的环境还需重新执行其安装脚本，保留后台 PATH 前缀。
 Windows 发布 ZIP 已包含两个程序；源码构建还需执行：
 
 ```powershell

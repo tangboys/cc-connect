@@ -23,8 +23,8 @@ jobs:
         run: |
           go test ./tools/windows-plugin-launcher -count=1 -timeout 90s
           go test ./agent/codex -run 'TestBackgroundCodex|TestAppServer|TestMapAppServer' -count=1 -timeout 90s
-      - name: Windows supervisor log sharing regression
-        run: go test ./daemon -run '^TestSupervisorLog_CoexistsWithOpenBackendLog$' -count=1 -timeout 90s
+      - name: Windows supervisor regression tests
+        run: go test ./daemon -count=1 -timeout 90s
 
   lint:
     runs-on: ubuntu-latest

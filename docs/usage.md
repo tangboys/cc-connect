@@ -1316,6 +1316,8 @@ go build -ldflags '-s -w -H windowsgui' -o cc-connect-plugin.exe ./tools/windows
 
 The MCP definition starts `cc-connect-plugin`, with no extra `codex-plugin` argument. It forwards stdio and exit codes without creating a console. Ordinary CLI use is unchanged. Reload the installed plugin after changing its definition: Codex uses a cached copy. A client disconnect closes its bridge process; other chats keep sharing the daemon while Codex desktop remains open.
 
+Windows Task Scheduler also uses the companion GUI launcher to start its supervisor without a console. Update both EXEs and reinstall the daemon to replace the old task action; changing the MCP definition alone does not update it. If the UTF-8 shell is installed, rerun its installer to retain the daemon PATH prefix.
+
 ## Task footer and account quotas
 
 Example numbers are illustrative:

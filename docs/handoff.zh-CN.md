@@ -22,6 +22,10 @@
 
 Windows MCP 定义启动 `cc-connect-plugin.exe`；它查找同目录 `cc-connect.exe`，追加固定 `codex-plugin` 子命令，转交 stdio 和退出码。启动器使用 GUI 子系统，子进程设置无窗口属性。启动器缺失或与主程序分目录会导致插件连接失败。
 
+Windows 任务计划也通过同目录 GUI 启动器的 `--supervisor <脚本路径>` 模式创建无窗口 PowerShell。守护脚本使用 .NET `ProcessStartInfo` 的 `UseShellExecute=false`、`CreateNoWindow=true` 创建后台；不要恢复 `Start-Process -WindowStyle Hidden`，默认 Windows Terminal 会创建可见或最小化窗口。Windows daemon 安装会先检查配套启动器存在，再修改任务。
+
+UTF-8 包装程序遇到 detached 工具进程没有控制台代码页时，以 `CREATE_NO_WINDOW` 重新执行自身，获得无窗口控制台后设置代码页再启动真实 PowerShell。不要用 `AllocConsole` 后隐藏窗口，或直接删除编码修复。回归测试检查原生 `GetConsoleWindow()` 为 0、中文输出及退出码。
+
 MCP initialize 请求已有 daemon manager 启动后台，重复连接复用同一个后台。每个 MCP 客户端断开 stdio 后，只退出自己的桥接进程；单次聊天关闭不能停止其他聊天仍在使用的后台。Windows supervisor 在 Codex 桌面开启期间维持连接，桌面关闭后停止所管理的后台及子进程树。原有守护重启、日志查看和多聊天复用保持不变。
 
 Codex app-server 启动前调用 `prepareCmdForKill`，Windows 同时设置新进程组、`HideWindow` 和 `CREATE_NO_WINDOW`；Unix 设置独立进程组。清理仅针对保存的进程对象/进程树。不要隐藏用户共享终端或按进程名称全局终止。

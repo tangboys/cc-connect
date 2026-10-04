@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 修复 Windows 默认终端为 Windows Terminal 时守护启动仍弹出或留下最小化窗口的问题：任务计划通过 GUI 启动器进入守护脚本，后台使用 `CreateNoWindow` 创建；Windows daemon 安装要求配套启动器与主程序位于同一目录。
+- 修复 UTF-8 包装程序在 Codex detached 工具进程中先分配控制台再隐藏所造成的闪窗；改用 `CREATE_NO_WINDOW` 子进程设置代码页，保留中文输出、标准流与退出码，并新增实际控制台句柄回归测试。
 - 修复 Windows 守护日志与后台日志同时打开时的文件共享冲突，避免守护脚本因日志写入失败退出并触发任务计划重试；新增实际文件占用回归测试和 Windows CI 检查。
 
 - Windows Codex 插件新增无控制台 `cc-connect-plugin.exe`，保留主 CLI 的控制台行为；Codex app-server 和定向进程清理也启用无窗口标志。Windows 发布包同时包含启动器。
