@@ -8984,7 +8984,7 @@ func (e *Engine) cmdSearch(p Platform, msg *Message, args []string) {
 
 	// Build result message
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(i18n.T(MsgSearchResult), len(results), keyword))
+	fmt.Fprintf(&sb, i18n.T(MsgSearchResult), len(results), keyword)
 
 	for i, r := range results {
 		shortID := r.id
@@ -11141,7 +11141,7 @@ func (e *Engine) cmdProvider(p Platform, msg *Message, args []string) {
 
 		var sb strings.Builder
 		if current != nil {
-			sb.WriteString(fmt.Sprintf(i18n.T(MsgProviderCurrent), current.Name))
+			fmt.Fprintf(&sb, i18n.T(MsgProviderCurrent), current.Name)
 			sb.WriteString("\n\n")
 		}
 		sb.WriteString(i18n.T(MsgProviderListTitle))
@@ -12363,7 +12363,7 @@ func (e *Engine) sendAskQuestionPrompt(p Platform, replyCtx any, questions []Use
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString(fmt.Sprintf("\n%s", i18n.T(MsgAskQuestionNote)))
+	fmt.Fprintf(&sb, "\n%s", i18n.T(MsgAskQuestionNote))
 	e.send(p, replyCtx, sb.String())
 }
 
@@ -14098,7 +14098,7 @@ func (e *Engine) renderProviderCard(locale ...*I18n) (localizedCard *Card) {
 
 	var body strings.Builder
 	if current != nil {
-		body.WriteString(fmt.Sprintf(i18n.T(MsgProviderCurrent), current.Name))
+		fmt.Fprintf(&body, i18n.T(MsgProviderCurrent), current.Name)
 		body.WriteString("\n\n")
 	}
 
@@ -14479,7 +14479,7 @@ func (e *Engine) renderAliasCard(locale ...*I18n) (localizedCard *Card) {
 	sort.Strings(names)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(i18n.T(MsgAliasListHeader), len(e.aliases)))
+	fmt.Fprintf(&sb, i18n.T(MsgAliasListHeader), len(e.aliases))
 	sb.WriteString("\n")
 	for _, n := range names {
 		sb.WriteString(fmt.Sprintf("`%s` → `%s`\n", n, e.aliases[n]))
@@ -14857,7 +14857,7 @@ func (e *Engine) cmdCronList(p Platform, msg *Message) {
 	lang := i18n.CurrentLang()
 	now := time.Now()
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(i18n.T(MsgCronListTitle), len(jobs)))
+	fmt.Fprintf(&sb, i18n.T(MsgCronListTitle), len(jobs))
 	sb.WriteString("\n")
 	sb.WriteString("\n")
 
@@ -14906,7 +14906,7 @@ func (e *Engine) cmdCronList(p Platform, msg *Message) {
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("\n%s", i18n.T(MsgCronListFooter)))
+	fmt.Fprintf(&sb, "\n%s", i18n.T(MsgCronListFooter))
 	e.reply(p, msg.ReplyCtx, sb.String())
 }
 
@@ -16030,10 +16030,10 @@ func (e *Engine) renderWhoamiCard(msg *Message) (localizedCard *Card) {
 	var body strings.Builder
 	body.WriteString(fmt.Sprintf("**User ID:**  `%s`\n", userID))
 	if msg.UserName != "" {
-		body.WriteString(fmt.Sprintf("**%s:**  %s\n", i18n.T(MsgWhoamiName), msg.UserName))
+		fmt.Fprintf(&body, "**%s:**  %s\n", i18n.T(MsgWhoamiName), msg.UserName)
 	}
 	if msg.Platform != "" {
-		body.WriteString(fmt.Sprintf("**%s:**  %s\n", i18n.T(MsgWhoamiPlatform), msg.Platform))
+		fmt.Fprintf(&body, "**%s:**  %s\n", i18n.T(MsgWhoamiPlatform), msg.Platform)
 	}
 	chatID := effectiveChannelID(msg)
 	if chatID != "" {
@@ -16199,7 +16199,7 @@ func (e *Engine) cmdAliasList(p Platform, msg *Message) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(i18n.T(MsgAliasListHeader), len(e.aliases)))
+	fmt.Fprintf(&sb, i18n.T(MsgAliasListHeader), len(e.aliases))
 	sb.WriteString("\n")
 
 	names := make([]string, 0, len(e.aliases))
